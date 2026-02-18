@@ -321,213 +321,213 @@ def encode_image_to_base64(image_path):
         return None
 
 def analyze_differences(comp_id, img1_path, img2_path):
-    """Analyze differences using AI vision and generate markers automatically"""
+    """Analyze differences between two images and generate change markers.
+    
+    Uses morphological operations to find distinct change clusters,
+    then optionally enriches with AI descriptions.
+    """
+    import sys
+    log = lambda msg: print(f"[analyze] {msg}", file=sys.stderr, flush=True)
+    
     try:
         comp_dir = Path(app.config['COMPARISONS_FOLDER']) / comp_id
         diff_layer_path = comp_dir / 'layer_diff.png'
         
         if not diff_layer_path.exists():
-            print("Diff layer not found")
+            log("Diff layer not found")
             return []
         
-        # 1. Load diff layer and find change regions
+        # 1. Load diff layer
         diff_img = cv2.imread(str(diff_layer_path), cv2.IMREAD_UNCHANGED)
         if diff_img is None:
-            print("Could not load diff layer")
+            log("Could not load diff layer")
             return []
         
-        # Convert to grayscale for contour detection
-        if len(diff_img.shape) == 4:
-            gray_diff = diff_img[:, :, 3]  # Alpha channel
+        # Get binary mask of differences
+        if len(diff_img.shape) == 3 and diff_img.shape[2] == 4:
+            binary = diff_img[:, :, 3]  # Alpha channel for RGBA
+        elif len(diff_img.shape) == 3:
+            binary = cv2.cvtColor(diff_img, cv2.COLOR_BGR2GRAY)
         else:
-            gray_diff = cv2.cvtColor(diff_img, cv2.COLOR_BGR2GRAY)
+            binary = diff_img.copy()
         
-        # Find contours of change regions
-        contours, _ = cv2.findContours(gray_diff, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        _, binary = cv2.threshold(binary, 10, 255, cv2.THRESH_BINARY)
         
-        # Filter significant regions (area > threshold)
-        min_area = 500  # Minimum area in pixels
-        significant_regions = []
+        img_h, img_w = binary.shape
+        total_pixels = img_h * img_w
+        diff_pixels = cv2.countNonZero(binary)
+        diff_pct = diff_pixels / total_pixels * 100
+        log(f"Diff: {diff_pixels}/{total_pixels} pixels ({diff_pct:.1f}%)")
         
-        img_height, img_width = gray_diff.shape
+        if diff_pixels == 0:
+            log("No differences found")
+            return []
         
+        # 2. Use morphological close to merge nearby diff pixels into clusters,
+        #    then dilate/erode to separate distinct regions
+        kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel_close)
+        
+        # If diff is very large (>15% of image), use erosion to break into smaller regions
+        if diff_pct > 15:
+            log(f"Large diff ({diff_pct:.1f}%), applying erosion to split regions")
+            kernel_erode = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
+            closed = cv2.erode(closed, kernel_erode, iterations=2)
+            # Re-dilate slightly to keep region centers accurate
+            kernel_dilate = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10, 10))
+            closed = cv2.dilate(closed, kernel_dilate, iterations=1)
+        
+        # 3. Find contours
+        contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Filter: min area = 0.1% of image, max area = 50% of image
+        min_area = max(500, total_pixels * 0.001)
+        max_area = total_pixels * 0.5
+        
+        regions = []
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area >= min_area:
-                # Calculate centroid
+            if min_area <= area <= max_area:
                 M = cv2.moments(contour)
                 if M["m00"] != 0:
                     cx = int(M["m10"] / M["m00"])
                     cy = int(M["m01"] / M["m00"])
-                    
-                    # Convert to normalized coordinates (0-1)
-                    norm_x = cx / img_width
-                    norm_y = cy / img_height
-                    
-                    significant_regions.append({
-                        'x': norm_x,
-                        'y': norm_y,
-                        'area': area
+                    x, y, w, h = cv2.boundingRect(contour)
+                    regions.append({
+                        'cx': cx / img_w,
+                        'cy': cy / img_h,
+                        'x': x / img_w,
+                        'y': y / img_h,
+                        'w': w / img_w,
+                        'h': h / img_h,
+                        'area': area,
+                        'area_pct': area / total_pixels * 100
                     })
         
-        if not significant_regions:
-            print("No significant change regions found")
-            return []
+        # Sort by position (top-left to bottom-right)
+        regions.sort(key=lambda r: (r['cy'], r['cx']))
         
-        print(f"Found {len(significant_regions)} change regions")
+        log(f"Found {len(regions)} change regions (from {len(contours)} contours)")
         
-        # 2. Prepare OpenAI Vision API request (optional — falls back to CV-only markers)
+        if not regions:
+            # Fallback: if morphology killed everything, create one marker at center of diff
+            log("No regions after filtering, creating single center marker")
+            regions = [{'cx': 0.5, 'cy': 0.5, 'area': diff_pixels, 'area_pct': diff_pct,
+                       'x': 0, 'y': 0, 'w': 1, 'h': 1}]
+        
+        # 4. Generate markers (CV-only first, then try AI enrichment)
+        markers = []
+        for i, region in enumerate(regions):
+            markers.append({
+                'id': i,
+                'x': round(region['cx'] * 100, 1),
+                'y': round(region['cy'] * 100, 1),
+                'title': f'Zmiana {i+1}',
+                'type': 'change',
+                'old': '',
+                'new': '',
+                'note': f'Obszar: {region["area_pct"]:.1f}% rysunku',
+                'auto_generated': True
+            })
+        
+        log(f"Generated {len(markers)} CV markers")
+        
+        # 5. Try AI enrichment (optional, non-blocking)
         openai_api_key = os.environ.get('OPENAI_API_KEY')
-        if not openai_api_key:
-            print("OPENAI_API_KEY not set — generating CV-only markers without AI descriptions")
-            # Generate basic markers from contour detection alone
-            cv_markers = []
-            for i, region in enumerate(significant_regions):
-                cv_markers.append({
-                    'id': i,
-                    'x': round(region['x'] * 100, 1),
-                    'y': round(region['y'] * 100, 1),
-                    'title': f'Zmiana {i+1}',
-                    'type': 'change',
-                    'old': 'Wykryto różnicę (brak opisu AI)',
-                    'new': 'Wykryto różnicę (brak opisu AI)',
-                    'note': f'Obszar zmiany: {region["area"]:.0f} px²',
-                    'auto_generated': True
-                })
-            print(f"Generated {len(cv_markers)} CV-only markers")
-            return cv_markers
+        if openai_api_key and len(markers) > 0:
+            log("Attempting AI enrichment...")
+            try:
+                ai_markers = _enrich_markers_with_ai(
+                    openai_api_key, img1_path, img2_path, regions, markers
+                )
+                if ai_markers:
+                    log(f"AI enrichment successful: {len(ai_markers)} markers")
+                    return ai_markers
+                else:
+                    log("AI enrichment returned empty, using CV markers")
+            except Exception as e:
+                log(f"AI enrichment failed: {e}, using CV markers")
         
-        # Encode images to base64
-        img1_b64 = encode_image_to_base64(img1_path)
-        img2_b64 = encode_image_to_base64(img2_path)
-        
-        if not img1_b64 or not img2_b64:
-            print("Failed to encode images to base64")
-            return []
-        
-        # Prepare region positions for the prompt
-        region_descriptions = []
-        for i, region in enumerate(significant_regions):
-            region_descriptions.append(f"Region {i+1}: pozycja {region['x']:.2f}, {region['y']:.2f} (x,y jako procent obrazu)")
-        
-        regions_text = "\n".join(region_descriptions)
-        
-        # 3. Send to OpenAI Vision API
-        client = openai.OpenAI(api_key=openai_api_key)
-        
-        prompt = f"""Porównaj te dwa rysunki architektoniczne/budowlane. 
-Na drugim rysunku zidentyfikowano {len(significant_regions)} regionów zmian w następujących pozycjach:
-
-{regions_text}
-
-Dla każdego regionu opisz:
-- co BYŁO w wersji 1 (pierwszy rysunek)  
-- co JEST w wersji 2 (drugi rysunek)
-- jaki typ zmiany to jest (nowe/zmiana/usunięte)
-
-Odpowiedz w formacie JSON:
-{{
-  "regions": [
-    {{
-      "region_id": 1,
-      "title": "Krótki tytuł zmiany",
-      "type": "new|change|delete", 
-      "was": "Opis tego co było w wersji 1",
-      "is": "Opis tego co jest w wersji 2",
-      "note": "Dodatkowe szczegóły"
-    }}
-  ]
-}}"""
-
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{img1_b64}"
-                                }
-                            },
-                            {
-                                "type": "image_url", 
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{img2_b64}"
-                                }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens=2000,
-                timeout=30
-            )
-            
-            ai_response = response.choices[0].message.content
-            print(f"AI response: {ai_response}")
-            
-        except Exception as e:
-            print(f"OpenAI API error: {e}")
-            return []
-        
-        # 4. Parse AI response and generate markers
-        try:
-            # Try to extract JSON from the response
-            import re
-            json_match = re.search(r'\{.*\}', ai_response, re.DOTALL)
-            if json_match:
-                ai_data = json.loads(json_match.group())
-                regions_data = ai_data.get('regions', [])
-            else:
-                print("Could not find JSON in AI response")
-                return []
-            
-            markers = []
-            for i, region_data in enumerate(regions_data):
-                if i < len(significant_regions):
-                    # Map AI response to our region
-                    region = significant_regions[i]
-                    
-                    # Determine badge based on type
-                    change_type = region_data.get('type', 'change').lower()
-                    badge_map = {
-                        'new': 'new',
-                        'change': 'chg', 
-                        'delete': 'del'
-                    }
-                    badge = badge_map.get(change_type, 'chg')
-                    
-                    # Frontend expects x/y as percentage (0-100), type as full word
-                    type_map = {'new': 'new', 'chg': 'change', 'del': 'deleted',
-                                'change': 'change', 'delete': 'deleted'}
-                    marker = {
-                        'id': i,
-                        'x': round(region['x'] * 100, 1),
-                        'y': round(region['y'] * 100, 1),
-                        'title': region_data.get('title', f'Zmiana {i+1}'),
-                        'type': type_map.get(change_type, 'change'),
-                        'old': region_data.get('was', ''),
-                        'new': region_data.get('is', ''),
-                        'note': region_data.get('note', ''),
-                        'auto_generated': True
-                    }
-                    markers.append(marker)
-            
-            print(f"Generated {len(markers)} AI markers")
-            return markers
-            
-        except json.JSONDecodeError as e:
-            print(f"Failed to parse AI response JSON: {e}")
-            return []
+        return markers
         
     except Exception as e:
-        print(f"Error in analyze_differences: {e}")
         import traceback
-        traceback.print_exc()
+        print(f"[analyze] FATAL: {e}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
         return []
+
+
+def _enrich_markers_with_ai(api_key, img1_path, img2_path, regions, cv_markers):
+    """Try to add AI descriptions to CV-detected markers. Returns enriched markers or None."""
+    img1_b64 = encode_image_to_base64(img1_path)
+    img2_b64 = encode_image_to_base64(img2_path)
+    
+    if not img1_b64 or not img2_b64:
+        return None
+    
+    region_desc = "\n".join(
+        f"Zmiana {i+1}: pozycja ({r['cx']:.0%}, {r['cy']:.0%}), "
+        f"bounding box ({r['x']:.0%},{r['y']:.0%}) rozmiar ({r['w']:.0%}×{r['h']:.0%}), "
+        f"obszar {r['area_pct']:.1f}% rysunku"
+        for i, r in enumerate(regions)
+    )
+    
+    prompt = f"""Porównaj te dwa rysunki architektoniczne (PZT - Projekt Zagospodarowania Terenu).
+Wykryto {len(regions)} regionów różnic:
+
+{region_desc}
+
+Dla KAŻDEGO regionu podaj krótki opis zmiany. Odpowiedz TYLKO poprawnym JSON (bez markdown):
+{{"changes": [
+  {{"id": 0, "title": "krótki tytuł", "type": "new|change|deleted", "was": "co było", "is": "co jest teraz", "note": "opcjonalny komentarz"}},
+  ...
+]}}"""
+
+    client = openai.OpenAI(api_key=api_key)
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img1_b64}"}},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{img2_b64}"}}
+            ]
+        }],
+        max_tokens=3000,
+        timeout=120
+    )
+    
+    ai_text = response.choices[0].message.content
+    print(f"[analyze] AI raw response: {ai_text[:500]}", flush=True)
+    
+    # Parse JSON
+    import re
+    json_match = re.search(r'\{.*\}', ai_text, re.DOTALL)
+    if not json_match:
+        return None
+    
+    ai_data = json.loads(json_match.group())
+    changes = ai_data.get('changes', ai_data.get('regions', []))
+    
+    if not changes:
+        return None
+    
+    type_map = {'new': 'new', 'change': 'change', 'delete': 'deleted', 'deleted': 'deleted'}
+    
+    enriched = []
+    for i, marker in enumerate(cv_markers):
+        m = dict(marker)
+        if i < len(changes):
+            c = changes[i]
+            m['title'] = c.get('title', m['title'])
+            m['type'] = type_map.get(c.get('type', 'change'), 'change')
+            m['old'] = c.get('was', c.get('old', ''))
+            m['new'] = c.get('is', c.get('new', ''))
+            m['note'] = c.get('note', m['note'])
+        enriched.append(m)
+    
+    return enriched
 
 def snap_to_feature(image_path, x_percent, y_percent, region_size=50, snap_radius=30):
     """Snap click point to nearest detected feature (corner/intersection)"""
