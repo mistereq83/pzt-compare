@@ -260,16 +260,7 @@ def generate_layers(comp_id, img1_path, img2_path, transformation_matrix=None, r
     if img1 is None or img2 is None:
         return False
     
-    # Apply ROI cropping if specified (BEFORE transformation)
-    if roi_data is not None:
-        print(f"Applying ROI crop: {roi_data}")
-        img1 = apply_roi_crop(img1, roi_data)
-        img2 = apply_roi_crop(img2, roi_data)
-        if img1 is None or img2 is None:
-            print("ROI crop failed")
-            return False
-    
-    # Apply transformation if provided
+    # Apply transformation FIRST (align images before any cropping)
     if transformation_matrix is not None:
         h2, w2 = img2.shape[:2]
         img1 = apply_transformation(img1, transformation_matrix, (w2, h2))
@@ -281,6 +272,15 @@ def generate_layers(comp_id, img1_path, img2_path, transformation_matrix=None, r
         h1, w1 = img1.shape[:2]
         if (h1, w1) != (h2, w2):
             img1 = cv2.resize(img1, (w2, h2), interpolation=cv2.INTER_LANCZOS4)
+    
+    # Apply ROI cropping AFTER alignment (so same region = same content on both)
+    if roi_data is not None:
+        print(f"Applying ROI crop (post-alignment): {roi_data}")
+        img1 = apply_roi_crop(img1, roi_data)
+        img2 = apply_roi_crop(img2, roi_data)
+        if img1 is None or img2 is None:
+            print("ROI crop failed")
+            return False
     
     # Generate layers
     layers = {}
