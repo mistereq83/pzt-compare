@@ -266,13 +266,20 @@
 <div class="step" id="step-processing">
   <h2>⚙️ Generowanie porównania...</h2>
   <div style="text-align:center;padding:2rem;">
-    <div style="font-size:3rem;margin-bottom:1rem;" id="processing-icon">⏳</div>
-    <div id="processing-text">Obliczanie transformacji i generowanie warstw...</div>
-    <div style="margin-top:1rem; font-size:.85rem; color:var(--muted);" id="processing-detail">
-      1️⃣ Generowanie warstw...
+    <div class="spinner" style="margin:0 auto 1.5rem;width:48px;height:48px;border:4px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;"></div>
+    <div id="processing-text" style="font-size:1rem;font-weight:600;">Obliczanie transformacji i generowanie warstw...</div>
+    <div style="margin-top:.8rem; font-size:.85rem; color:var(--muted);" id="processing-detail">
+      To może potrwać do 2 minut (konwersja PDF + analiza AI)
+    </div>
+    <div class="progress-bar" style="margin-top:1.5rem;max-width:400px;margin-left:auto;margin-right:auto;">
+      <div class="progress-fill" id="process-progress" style="width:10%;animation:progress-pulse 3s ease-in-out infinite;"></div>
     </div>
   </div>
 </div>
+<style>
+@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes progress-pulse { 0%{width:10%} 50%{width:70%} 100%{width:90%} }
+</style>
 
 <script>
 let sessionId = null;
@@ -351,6 +358,12 @@ function checkUploadReady() {
 document.getElementById('comp-name').addEventListener('input', checkUploadReady);
 
 async function uploadFiles() {
+  const btn = document.getElementById('upload-btn');
+  const origText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳ Przesyłanie i konwersja PDF...';
+  btn.style.opacity = '0.7';
+  
   const formData = new FormData();
   formData.append('file1', document.getElementById('file1').files[0]);
   formData.append('file2', document.getElementById('file2').files[0]);
@@ -384,6 +397,9 @@ async function uploadFiles() {
     
   } catch (error) {
     alert('Błąd: ' + error.message);
+    btn.disabled = false;
+    btn.textContent = origText;
+    btn.style.opacity = '1';
   }
 }
 
