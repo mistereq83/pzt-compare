@@ -868,7 +868,7 @@ def health():
     return 'ok'
 
 @app.route('/debug/reanalyze/<comp_id>')
-@require_auth
+@requires_auth
 def debug_reanalyze(comp_id):
     """Debug: re-run analyze_differences on existing comparison"""
     import sys, traceback as tb
