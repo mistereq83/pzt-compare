@@ -69,6 +69,19 @@
   }
   .calibration-point:hover { transform:translate(-50%, -50%) scale(1.2); }
   .calibration-point.active { background:var(--green); }
+  .calibration-point.temp-point {
+    background:var(--yellow); 
+    animation:pulse 0.6s ease-in-out infinite alternate;
+  }
+  .calibration-point.snapped {
+    background:var(--green);
+    box-shadow:0 0 0 2px var(--green), 0 2px 8px rgba(0,0,0,.3);
+  }
+  
+  @keyframes pulse {
+    from { opacity: 0.3; transform: translate(-50%, -50%) scale(0.8); }
+    to { opacity: 0.8; transform: translate(-50%, -50%) scale(1.0); }
+  }
 
   .calibration-info { padding:1rem; background:rgba(79,140,255,.1); margin-bottom:1rem; border-radius:8px; font-size:.85rem; }
 
@@ -180,7 +193,7 @@
   </div>
   
   <div class="calibration-info">
-    <strong>Instrukcja:</strong> Kliknij minimum 3 te same punkty na obu rysunkach (narożniki, przecięcia linii). Im więcej punktów, tym lepsze dopasowanie. Kliknij ponownie na punkt, aby go usunąć.
+    <strong>Instrukcja:</strong> Kliknij minimum 3 te same punkty na obu rysunkach (narożniki, przecięcia linii). System automatycznie przyciąga punkty do najbliższych krawędzi i narożników 🎯. Im więcej punktów, tym lepsze dopasowanie. Kliknij ponownie na punkt, aby go usunąć.
   </div>
   
   <div class="calibration-container">
@@ -213,8 +226,11 @@
 <div class="step" id="step-processing">
   <h2>⚙️ Generowanie porównania...</h2>
   <div style="text-align:center;padding:2rem;">
-    <div style="font-size:3rem;margin-bottom:1rem;">⏳</div>
-    <div>Obliczanie transformacji i generowanie warstw...</div>
+    <div style="font-size:3rem;margin-bottom:1rem;" id="processing-icon">⏳</div>
+    <div id="processing-text">Obliczanie transformacji i generowanie warstw...</div>
+    <div style="margin-top:1rem; font-size:.85rem; color:var(--muted);" id="processing-detail">
+      1️⃣ Generowanie warstw...
+    </div>
   </div>
 </div>
 
@@ -342,18 +358,85 @@ function setupCalibration() {
 }
 
 function setupImageCalibration(img, version) {
-  img.addEventListener('click', function(e) {
+  img.addEventListener('click', async function(e) {
     const rect = img.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width * 100;
     const y = (e.clientY - rect.top) / rect.height * 100;
     
-    addCalibrationPoint(img.parentElement, x, y, version);
+    // Show temporary point while snapping
+    const tempPoint = showTempCalibrationPoint(img.parentElement, x, y);
+    
+    try {
+      // Call snap_point endpoint
+      const response = await fetch('/snap_point', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: sessionId,
+          x: x,
+          y: y,
+          version: version
+        })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        
+        if (result.snapped) {
+          // Animate from original to snapped position
+          animatePointSnap(tempPoint, result.original_x, result.original_y, result.x, result.y);
+          await new Promise(resolve => setTimeout(resolve, 200)); // Wait for animation
+        }
+        
+        // Remove temp point and add final calibration point
+        if (tempPoint) tempPoint.remove();
+        addCalibrationPoint(img.parentElement, result.x, result.y, version, result.snapped);
+        
+      } else {
+        // Fallback to original coordinates
+        if (tempPoint) tempPoint.remove();
+        addCalibrationPoint(img.parentElement, x, y, version, false);
+      }
+      
+    } catch (error) {
+      console.error('Feature snapping failed:', error);
+      // Fallback to original coordinates
+      if (tempPoint) tempPoint.remove();
+      addCalibrationPoint(img.parentElement, x, y, version, false);
+    }
   });
 }
 
-function addCalibrationPoint(container, x, y, version) {
+function showTempCalibrationPoint(container, x, y) {
+  const tempPoint = document.createElement('div');
+  tempPoint.className = 'calibration-point temp-point';
+  tempPoint.style.left = x + '%';
+  tempPoint.style.top = y + '%';
+  tempPoint.style.opacity = '0.5';
+  tempPoint.style.transform = 'translate(-50%, -50%) scale(0.8)';
+  tempPoint.textContent = '?';
+  
+  container.appendChild(tempPoint);
+  return tempPoint;
+}
+
+function animatePointSnap(tempPoint, fromX, fromY, toX, toY) {
+  if (!tempPoint) return;
+  
+  // Add snapped styling
+  tempPoint.style.background = 'var(--green)';
+  tempPoint.style.opacity = '1';
+  tempPoint.style.transform = 'translate(-50%, -50%) scale(1)';
+  tempPoint.style.transition = 'all 0.2s ease-out';
+  
+  // Animate to final position
+  tempPoint.style.left = toX + '%';
+  tempPoint.style.top = toY + '%';
+}
+
+function addCalibrationPoint(container, x, y, version, snapped = false) {
   // Check if there's already a point at this location (for removal)
-  const existingPoints = container.querySelectorAll('.calibration-point');
+  const existingPoints = container.querySelectorAll('.calibration-point:not(.temp-point)');
   for (let point of existingPoints) {
     const px = parseFloat(point.style.left);
     const py = parseFloat(point.style.top);
@@ -367,16 +450,22 @@ function addCalibrationPoint(container, x, y, version) {
   
   // Add new point
   const pointDiv = document.createElement('div');
-  pointDiv.className = 'calibration-point';
+  pointDiv.className = 'calibration-point' + (snapped ? ' snapped' : '');
   pointDiv.style.left = x + '%';
   pointDiv.style.top = y + '%';
   pointDiv.dataset.id = currentPointId;
   pointDiv.textContent = currentPointId + 1;
   
+  // Special styling for snapped points
+  if (snapped) {
+    pointDiv.style.background = 'var(--green)';
+    pointDiv.style.boxShadow = '0 0 0 2px var(--green), 0 2px 8px rgba(0,0,0,.3)';
+  }
+  
   container.appendChild(pointDiv);
   
   // Store point
-  const pointData = { id: currentPointId, x: x, y: y };
+  const pointData = { id: currentPointId, x: x, y: y, snapped: snapped };
   if (version === 1) {
     calibrationPoints1.push(pointData);
   } else {
@@ -406,15 +495,29 @@ function updateCalibrationStatus() {
   const minPoints = Math.min(calibrationPoints1.length, calibrationPoints2.length);
   const totalPoints = calibrationPoints1.length + calibrationPoints2.length;
   
-  document.getElementById('point-count').textContent = `${calibrationPoints1.length} + ${calibrationPoints2.length}`;
+  // Count snapped points
+  const snapped1 = calibrationPoints1.filter(p => p.snapped).length;
+  const snapped2 = calibrationPoints2.filter(p => p.snapped).length;
+  const totalSnapped = snapped1 + snapped2;
+  
+  let pointText = `${calibrationPoints1.length} + ${calibrationPoints2.length}`;
+  if (totalSnapped > 0) {
+    pointText += ` (${totalSnapped} 🎯)`;
+  }
+  
+  document.getElementById('point-count').textContent = pointText;
   document.getElementById('progress').style.width = Math.min(minPoints / 3 * 100, 100) + '%';
   
   if (minPoints === 0) {
-    document.getElementById('cal-status').textContent = 'Kliknij punkty na obu rysunkach';
+    document.getElementById('cal-status').textContent = 'Kliknij punkty na obu rysunkach - system automatycznie przyciąga do narożników';
   } else if (minPoints < 3) {
     document.getElementById('cal-status').textContent = `Dodaj jeszcze ${3 - minPoints} punkty`;
   } else {
-    document.getElementById('cal-status').textContent = `Gotowe! ${minPoints} punktów kalibracji`;
+    let statusText = `Gotowe! ${minPoints} punktów kalibracji`;
+    if (totalSnapped > 0) {
+      statusText += ` (${totalSnapped} precyzyjnie dopasowanych)`;
+    }
+    document.getElementById('cal-status').textContent = statusText;
   }
   
   document.getElementById('calibrate-btn').disabled = minPoints < 3;
@@ -425,6 +528,7 @@ function resetCalibration() {
   calibrationPoints2 = [];
   currentPointId = 0;
   
+  // Remove all calibration points including temp points
   document.querySelectorAll('.calibration-point').forEach(p => p.remove());
   updateCalibrationStatus();
 }

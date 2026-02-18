@@ -17,6 +17,9 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 from werkzeug.utils import secure_filename
 import subprocess
 import hashlib, hmac
+import openai
+import base64
+import time
 
 app = Flask(__name__)
 
@@ -270,6 +273,316 @@ def generate_layers(comp_id, img1_path, img2_path, transformation_matrix=None):
     
     return True
 
+def encode_image_to_base64(image_path):
+    """Encode image to base64 for OpenAI Vision API"""
+    try:
+        with open(image_path, 'rb') as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+    except Exception as e:
+        print(f"Error encoding image {image_path}: {e}")
+        return None
+
+def analyze_differences(comp_id, img1_path, img2_path):
+    """Analyze differences using AI vision and generate markers automatically"""
+    try:
+        comp_dir = Path(app.config['COMPARISONS_FOLDER']) / comp_id
+        diff_layer_path = comp_dir / 'layer_diff.png'
+        
+        if not diff_layer_path.exists():
+            print("Diff layer not found")
+            return []
+        
+        # 1. Load diff layer and find change regions
+        diff_img = cv2.imread(str(diff_layer_path), cv2.IMREAD_UNCHANGED)
+        if diff_img is None:
+            print("Could not load diff layer")
+            return []
+        
+        # Convert to grayscale for contour detection
+        if len(diff_img.shape) == 4:
+            gray_diff = diff_img[:, :, 3]  # Alpha channel
+        else:
+            gray_diff = cv2.cvtColor(diff_img, cv2.COLOR_BGR2GRAY)
+        
+        # Find contours of change regions
+        contours, _ = cv2.findContours(gray_diff, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Filter significant regions (area > threshold)
+        min_area = 500  # Minimum area in pixels
+        significant_regions = []
+        
+        img_height, img_width = gray_diff.shape
+        
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area >= min_area:
+                # Calculate centroid
+                M = cv2.moments(contour)
+                if M["m00"] != 0:
+                    cx = int(M["m10"] / M["m00"])
+                    cy = int(M["m01"] / M["m00"])
+                    
+                    # Convert to normalized coordinates (0-1)
+                    norm_x = cx / img_width
+                    norm_y = cy / img_height
+                    
+                    significant_regions.append({
+                        'x': norm_x,
+                        'y': norm_y,
+                        'area': area
+                    })
+        
+        if not significant_regions:
+            print("No significant change regions found")
+            return []
+        
+        print(f"Found {len(significant_regions)} change regions")
+        
+        # 2. Prepare OpenAI Vision API request
+        openai_api_key = os.environ.get('OPENAI_API_KEY')
+        if not openai_api_key:
+            print("OPENAI_API_KEY not found in environment")
+            return []
+        
+        # Encode images to base64
+        img1_b64 = encode_image_to_base64(img1_path)
+        img2_b64 = encode_image_to_base64(img2_path)
+        
+        if not img1_b64 or not img2_b64:
+            print("Failed to encode images to base64")
+            return []
+        
+        # Prepare region positions for the prompt
+        region_descriptions = []
+        for i, region in enumerate(significant_regions):
+            region_descriptions.append(f"Region {i+1}: pozycja {region['x']:.2f}, {region['y']:.2f} (x,y jako procent obrazu)")
+        
+        regions_text = "\n".join(region_descriptions)
+        
+        # 3. Send to OpenAI Vision API
+        client = openai.OpenAI(api_key=openai_api_key)
+        
+        prompt = f"""Porównaj te dwa rysunki architektoniczne/budowlane. 
+Na drugim rysunku zidentyfikowano {len(significant_regions)} regionów zmian w następujących pozycjach:
+
+{regions_text}
+
+Dla każdego regionu opisz:
+- co BYŁO w wersji 1 (pierwszy rysunek)  
+- co JEST w wersji 2 (drugi rysunek)
+- jaki typ zmiany to jest (nowe/zmiana/usunięte)
+
+Odpowiedz w formacie JSON:
+{{
+  "regions": [
+    {{
+      "region_id": 1,
+      "title": "Krótki tytuł zmiany",
+      "type": "new|change|delete", 
+      "was": "Opis tego co było w wersji 1",
+      "is": "Opis tego co jest w wersji 2",
+      "note": "Dodatkowe szczegóły"
+    }}
+  ]
+}}"""
+
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{img1_b64}"
+                                }
+                            },
+                            {
+                                "type": "image_url", 
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{img2_b64}"
+                                }
+                            }
+                        ]
+                    }
+                ],
+                max_tokens=2000,
+                timeout=30
+            )
+            
+            ai_response = response.choices[0].message.content
+            print(f"AI response: {ai_response}")
+            
+        except Exception as e:
+            print(f"OpenAI API error: {e}")
+            return []
+        
+        # 4. Parse AI response and generate markers
+        try:
+            # Try to extract JSON from the response
+            import re
+            json_match = re.search(r'\{.*\}', ai_response, re.DOTALL)
+            if json_match:
+                ai_data = json.loads(json_match.group())
+                regions_data = ai_data.get('regions', [])
+            else:
+                print("Could not find JSON in AI response")
+                return []
+            
+            markers = []
+            for i, region_data in enumerate(regions_data):
+                if i < len(significant_regions):
+                    # Map AI response to our region
+                    region = significant_regions[i]
+                    
+                    # Determine badge based on type
+                    change_type = region_data.get('type', 'change').lower()
+                    badge_map = {
+                        'new': 'new',
+                        'change': 'chg', 
+                        'delete': 'del'
+                    }
+                    badge = badge_map.get(change_type, 'chg')
+                    
+                    marker = {
+                        'id': i,
+                        'x': region['x'],
+                        'y': region['y'],
+                        'title': region_data.get('title', f'Zmiana {i+1}'),
+                        'badge': badge,
+                        'old': region_data.get('was', ''),
+                        'now': region_data.get('is', ''),
+                        'note': region_data.get('note', ''),
+                        'auto_generated': True
+                    }
+                    markers.append(marker)
+            
+            print(f"Generated {len(markers)} AI markers")
+            return markers
+            
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse AI response JSON: {e}")
+            return []
+        
+    except Exception as e:
+        print(f"Error in analyze_differences: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+
+def snap_to_feature(image_path, x_percent, y_percent, region_size=50, snap_radius=30):
+    """Snap click point to nearest detected feature (corner/intersection)"""
+    try:
+        # Load image
+        img = cv2.imread(image_path)
+        if img is None:
+            return x_percent, y_percent, False
+        
+        h, w = img.shape[:2]
+        
+        # Convert percentages to pixel coordinates
+        x_px = int(x_percent * w / 100)
+        y_px = int(y_percent * h / 100)
+        
+        # Define region around click
+        x1 = max(0, x_px - region_size)
+        y1 = max(0, y_px - region_size)
+        x2 = min(w, x_px + region_size)
+        y2 = min(h, y_px + region_size)
+        
+        # Extract region
+        region = img[y1:y2, x1:x2]
+        if region.size == 0:
+            return x_percent, y_percent, False
+        
+        # Convert to grayscale
+        gray_region = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
+        
+        # Detect corners/features
+        corners = cv2.goodFeaturesToTrack(
+            gray_region,
+            maxCorners=20,
+            qualityLevel=0.01,
+            minDistance=5,
+            blockSize=3,
+            useHarrisDetector=True,
+            k=0.04
+        )
+        
+        if corners is None or len(corners) == 0:
+            return x_percent, y_percent, False
+        
+        # Find closest feature to click point within region
+        click_x_region = x_px - x1
+        click_y_region = y_px - y1
+        
+        min_dist = float('inf')
+        best_corner = None
+        
+        for corner in corners:
+            corner_x, corner_y = corner.ravel()
+            dist = np.sqrt((corner_x - click_x_region)**2 + (corner_y - click_y_region)**2)
+            
+            if dist < min_dist and dist <= snap_radius:
+                min_dist = dist
+                best_corner = (corner_x, corner_y)
+        
+        if best_corner is None:
+            return x_percent, y_percent, False
+        
+        # Convert back to image coordinates and percentages
+        snapped_x_px = x1 + best_corner[0]
+        snapped_y_px = y1 + best_corner[1]
+        
+        snapped_x_percent = (snapped_x_px / w) * 100
+        snapped_y_percent = (snapped_y_px / h) * 100
+        
+        return snapped_x_percent, snapped_y_percent, True
+        
+    except Exception as e:
+        print(f"Feature snapping error: {e}")
+        return x_percent, y_percent, False
+
+@app.route('/snap_point', methods=['POST'])
+def snap_point():
+    """Snap calibration point to nearest detected feature"""
+    try:
+        data = request.json
+        session_id = data.get('session_id')
+        x = data.get('x')  # percentage
+        y = data.get('y')  # percentage
+        version = data.get('version')  # 1 or 2
+        
+        if not session_id or x is None or y is None or version is None:
+            return jsonify({'error': 'Missing parameters'}), 400
+        
+        session_dir = Path(app.config['UPLOAD_FOLDER']) / session_id
+        if not session_dir.exists():
+            return jsonify({'error': 'Session not found'}), 404
+        
+        # Get image path
+        image_path = session_dir / f'v{version}.png'
+        if not image_path.exists():
+            return jsonify({'error': 'Image not found'}), 404
+        
+        # Perform feature snapping
+        snapped_x, snapped_y, snapped = snap_to_feature(str(image_path), x, y)
+        
+        return jsonify({
+            'x': snapped_x,
+            'y': snapped_y,
+            'snapped': snapped,
+            'original_x': x,
+            'original_y': y
+        })
+        
+    except Exception as e:
+        print(f"Snap point error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/')
 def index():
     """Main page - list comparisons"""
@@ -380,6 +693,9 @@ def calibrate():
         if not success:
             return jsonify({'error': 'Layer generation failed'}), 500
         
+        # AI Analysis - automatically find and describe differences
+        ai_markers = analyze_differences(comp_id, str(orig1_path), str(orig2_path))
+        
         # Save metadata
         meta_data = {
             'id': comp_id,
@@ -401,7 +717,7 @@ def calibrate():
                 'points1': points1,
                 'points2': points2
             },
-            'markers': []
+            'markers': ai_markers
         }
         
         save_comparison_meta(comp_id, meta_data)
