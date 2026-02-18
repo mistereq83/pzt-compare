@@ -40,6 +40,25 @@
 
   .view{display:none;} .view.active{display:block;}
 
+  /* === ZOOM/PAN CONTROLS === */
+  .zoom-controls{
+    position:absolute;top:10px;right:10px;z-index:50;
+    display:flex;gap:5px;background:rgba(255,255,255,0.95);
+    border-radius:8px;padding:6px;box-shadow:0 2px 8px rgba(0,0,0,0.15);
+  }
+  .zoom-btn{
+    width:32px;height:32px;border:none;background:var(--navy);color:#fff;
+    border-radius:4px;cursor:pointer;font-size:16px;font-weight:600;
+    display:flex;align-items:center;justify-content:center;transition:all .15s;
+  }
+  .zoom-btn:hover{background:var(--navy-light);transform:scale(1.05);}
+  .zoom-btn:active{transform:scale(0.95);}
+  .zoom-info{
+    position:absolute;top:50px;right:10px;z-index:50;
+    background:rgba(0,0,0,0.7);color:#fff;padding:4px 8px;
+    border-radius:4px;font-size:11px;display:none;
+  }
+
   /* === LAYERS VIEW === */
   .layers-toolbar{
     display:flex;gap:.5rem;padding:.5rem 1.5rem;align-items:center;flex-wrap:wrap;background:var(--card);
@@ -58,10 +77,15 @@
   .layers-container{
     position:relative;margin:1rem;border-radius:12px;overflow:hidden;
     background:#fff;border:1px solid var(--border);box-shadow:0 4px 12px rgba(0,61,108,0.1);
+    cursor:grab;
+  }
+  .layers-container.dragging{cursor:grabbing;}
+  .layers-container .zoom-viewport{
+    position:relative;transform-origin:0 0;transition:transform 0.2s ease;
   }
   .layers-container img{
     position:absolute;top:0;left:0;width:100%;height:100%;
-    transition:opacity .25s ease;
+    transition:opacity .25s ease;pointer-events:none;user-select:none;
   }
   .layers-container img:first-child{position:relative;} /* flow element for sizing */
   .layers-container img.hidden{opacity:0;}
@@ -102,8 +126,13 @@
   .plan-container{
     position:relative;margin:0 1rem 1rem;border-radius:12px;overflow:hidden;
     background:var(--card);border:1px solid var(--border);box-shadow:0 4px 12px rgba(0,61,108,0.1);
+    cursor:grab;
   }
-  .plan-container>img{width:100%;display:block;}
+  .plan-container.dragging{cursor:grabbing;}
+  .plan-container .zoom-viewport{
+    position:relative;transform-origin:0 0;transition:transform 0.2s ease;
+  }
+  .plan-container>img{width:100%;display:block;pointer-events:none;user-select:none;}
 
   .marker{
     position:absolute;width:28px;height:28px;border-radius:50%;
@@ -235,13 +264,22 @@
   <div class="layer-info">🔵 niebieski = {{ comparison.v1_name }} · 🔴 czerwony = {{ comparison.v2_name }} · włączaj/wyłączaj warstwy żeby zobaczyć co się zmieniło</div>
 
   <div class="layers-container" id="layersBox">
-    <img src="/comparisons/{{ comparison.id }}/{{ comparison.layers.v1_blue }}" data-layer="v1blue" alt="v1 blue">
-    <img src="/comparisons/{{ comparison.id }}/{{ comparison.layers.v2_red }}" data-layer="v2red" alt="v2 red">
-    <img src="/comparisons/{{ comparison.id }}/{{ comparison.layers.v1_clean }}" data-layer="v1clean" class="hidden" alt="v1 clean">
-    <img src="/comparisons/{{ comparison.id }}/{{ comparison.layers.v2_clean }}" data-layer="v2clean" class="hidden" alt="v2 clean">
-    <img src="/comparisons/{{ comparison.id }}/{{ comparison.layers.diff }}" data-layer="diff" class="hidden" alt="diff">
+    <div class="zoom-controls">
+      <button class="zoom-btn" onclick="zoomIn('layersBox')" title="Powiększ">+</button>
+      <button class="zoom-btn" onclick="zoomOut('layersBox')" title="Pomniejsz">-</button>
+      <button class="zoom-btn" onclick="zoomReset('layersBox')" title="Resetuj">↺</button>
+    </div>
+    <div class="zoom-info" id="zoom-info-layers"></div>
+    
+    <div class="zoom-viewport" id="layers-viewport">
+      <img src="/comparisons/{{ comparison.id }}/{{ comparison.layers.v1_blue }}" data-layer="v1blue" alt="v1 blue">
+      <img src="/comparisons/{{ comparison.id }}/{{ comparison.layers.v2_red }}" data-layer="v2red" alt="v2 red">
+      <img src="/comparisons/{{ comparison.id }}/{{ comparison.layers.v1_clean }}" data-layer="v1clean" class="hidden" alt="v1 clean">
+      <img src="/comparisons/{{ comparison.id }}/{{ comparison.layers.v2_clean }}" data-layer="v2clean" class="hidden" alt="v2 clean">
+      <img src="/comparisons/{{ comparison.id }}/{{ comparison.layers.diff }}" data-layer="diff" class="hidden" alt="diff">
 
-    <!-- Dynamic markers will be inserted here -->
+      <!-- Dynamic markers will be inserted here -->
+    </div>
     <div class="popup" id="popup-layers"></div>
   </div>
 </div>
@@ -272,8 +310,17 @@
   </div>
   
   <div class="plan-container" id="plan-markers">
-    <img src="/comparisons/{{ comparison.id }}/{{ comparison.original_v2 }}" alt="{{ comparison.v2_name }}">
-    <!-- Dynamic markers will be inserted here -->
+    <div class="zoom-controls">
+      <button class="zoom-btn" onclick="zoomIn('plan-markers')" title="Powiększ">+</button>
+      <button class="zoom-btn" onclick="zoomOut('plan-markers')" title="Pomniejsz">-</button>
+      <button class="zoom-btn" onclick="zoomReset('plan-markers')" title="Resetuj">↺</button>
+    </div>
+    <div class="zoom-info" id="zoom-info-markers"></div>
+    
+    <div class="zoom-viewport" id="markers-viewport">
+      <img src="/comparisons/{{ comparison.id }}/{{ comparison.layers.v2_clean }}" alt="{{ comparison.v2_name }}">
+      <!-- Dynamic markers will be inserted here -->
+    </div>
     <div class="popup" id="popup-markers"></div>
   </div>
 </div>
@@ -577,13 +624,13 @@ function renderMarkers() {
     // Find original index for numbering
     const originalIndex = markers.findIndex(m => m.id === marker.id);
     
-    // Layers view marker
+    // Layers view marker - append to viewport
     const layersMarker = createMarkerElement(marker, originalIndex, 'popup-layers');
-    layersBox.appendChild(layersMarker);
+    document.getElementById('layers-viewport').appendChild(layersMarker);
     
-    // Markers view marker
+    // Markers view marker - append to viewport
     const markersMarker = createMarkerElement(marker, originalIndex, 'popup-markers');
-    markersBox.appendChild(markersMarker);
+    document.getElementById('markers-viewport').appendChild(markersMarker);
   });
   
   updateSeverityCounts();
@@ -679,8 +726,8 @@ document.getElementById('plan-markers').addEventListener('click', function(e) {
   if (!addMarkerMode) return;
   if (e.target.classList.contains('marker')) return;
   
-  const rect = this.getBoundingClientRect();
-  const img = this.querySelector('img');
+  const viewport = document.getElementById('markers-viewport');
+  const img = viewport.querySelector('img');
   const imgRect = img.getBoundingClientRect();
   
   const x = (e.clientX - imgRect.left) / imgRect.width * 100;
@@ -692,7 +739,7 @@ document.getElementById('plan-markers').addEventListener('click', function(e) {
   tempMarker.style.left = x + '%';
   tempMarker.style.top = y + '%';
   tempMarker.textContent = '?';
-  this.appendChild(tempMarker);
+  viewport.appendChild(tempMarker);
   
   // Show form
   openPopup(tempMarker, null, 'popup-markers');
@@ -796,9 +843,183 @@ async function loadMarkers() {
   }
 }
 
+// === ZOOM/PAN FUNCTIONALITY ===
+const zoomStates = {
+  'layersBox': { scale: 1, x: 0, y: 0, minScale: 0.1, maxScale: 5 },
+  'plan-markers': { scale: 1, x: 0, y: 0, minScale: 0.1, maxScale: 5 }
+};
+
+function zoomIn(containerId) {
+  const state = zoomStates[containerId];
+  state.scale = Math.min(state.scale * 1.25, state.maxScale);
+  applyTransform(containerId);
+  showZoomInfo(containerId);
+}
+
+function zoomOut(containerId) {
+  const state = zoomStates[containerId];
+  state.scale = Math.max(state.scale / 1.25, state.minScale);
+  applyTransform(containerId);
+  showZoomInfo(containerId);
+}
+
+function zoomReset(containerId) {
+  const state = zoomStates[containerId];
+  state.scale = 1;
+  state.x = 0;
+  state.y = 0;
+  applyTransform(containerId);
+  showZoomInfo(containerId);
+}
+
+function applyTransform(containerId) {
+  const state = zoomStates[containerId];
+  const viewport = document.getElementById(containerId === 'layersBox' ? 'layers-viewport' : 'markers-viewport');
+  viewport.style.transform = `scale(${state.scale}) translate(${state.x}px, ${state.y}px)`;
+}
+
+function showZoomInfo(containerId) {
+  const state = zoomStates[containerId];
+  const info = document.getElementById(containerId === 'layersBox' ? 'zoom-info-layers' : 'zoom-info-markers');
+  info.textContent = `${Math.round(state.scale * 100)}%`;
+  info.style.display = 'block';
+  setTimeout(() => info.style.display = 'none', 1500);
+}
+
+function setupZoomPan(containerId) {
+  const container = document.getElementById(containerId);
+  const state = zoomStates[containerId];
+  let isDragging = false;
+  let lastX, lastY;
+
+  // Wheel zoom
+  container.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    
+    const rect = container.getBoundingClientRect();
+    const centerX = (e.clientX - rect.left) / rect.width;
+    const centerY = (e.clientY - rect.top) / rect.height;
+    
+    const oldScale = state.scale;
+    
+    if (e.deltaY < 0) {
+      state.scale = Math.min(state.scale * 1.1, state.maxScale);
+    } else {
+      state.scale = Math.max(state.scale / 1.1, state.minScale);
+    }
+    
+    // Zoom towards cursor position
+    if (state.scale !== oldScale) {
+      const scaleDiff = state.scale - oldScale;
+      state.x -= (centerX * rect.width * scaleDiff) / state.scale;
+      state.y -= (centerY * rect.height * scaleDiff) / state.scale;
+    }
+    
+    applyTransform(containerId);
+    showZoomInfo(containerId);
+  });
+
+  // Drag pan
+  container.addEventListener('mousedown', function(e) {
+    if (e.target.classList.contains('marker') || e.target.closest('.zoom-controls') || e.target.closest('.popup')) return;
+    
+    isDragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    container.classList.add('dragging');
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!isDragging) return;
+    
+    const deltaX = e.clientX - lastX;
+    const deltaY = e.clientY - lastY;
+    
+    state.x += deltaX / state.scale;
+    state.y += deltaY / state.scale;
+    
+    lastX = e.clientX;
+    lastY = e.clientY;
+    
+    applyTransform(containerId);
+  });
+
+  document.addEventListener('mouseup', function() {
+    isDragging = false;
+    container.classList.remove('dragging');
+  });
+
+  // Double-click zoom
+  container.addEventListener('dblclick', function(e) {
+    if (e.target.classList.contains('marker') || e.target.closest('.zoom-controls')) return;
+    
+    const rect = container.getBoundingClientRect();
+    const centerX = (e.clientX - rect.left) / rect.width;
+    const centerY = (e.clientY - rect.top) / rect.height;
+    
+    const oldScale = state.scale;
+    state.scale = state.scale < 2 ? 2 : 1;
+    
+    // Zoom towards click position
+    if (state.scale !== oldScale) {
+      const scaleDiff = state.scale - oldScale;
+      state.x -= (centerX * rect.width * scaleDiff) / state.scale;
+      state.y -= (centerY * rect.height * scaleDiff) / state.scale;
+    }
+    
+    applyTransform(containerId);
+    showZoomInfo(containerId);
+  });
+
+  // Touch support for mobile
+  let initialDistance = 0;
+  
+  container.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 2) {
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      initialDistance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+    }
+  });
+
+  container.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const currentDistance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) + 
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+      
+      if (initialDistance > 0) {
+        const scale = currentDistance / initialDistance;
+        const newScale = Math.max(state.minScale, Math.min(state.scale * scale, state.maxScale));
+        
+        if (newScale !== state.scale) {
+          state.scale = newScale;
+          applyTransform(containerId);
+          showZoomInfo(containerId);
+        }
+      }
+      
+      initialDistance = currentDistance;
+    }
+  });
+}
+
 // === Initialization ===
 document.addEventListener('DOMContentLoaded', function() {
   renderMarkers();
+  
+  // Initialize zoom/pan for both containers
+  setupZoomPan('layersBox');
+  setupZoomPan('plan-markers');
   
   // Click outside to close popups
   document.addEventListener('click', function(e) {
