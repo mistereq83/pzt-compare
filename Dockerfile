@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY requirements.txt .
+# v2: added openai
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 COPY . .
