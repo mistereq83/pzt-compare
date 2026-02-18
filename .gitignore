@@ -27,4 +27,4 @@ uploads/
 *.tmp
 
 # Logs
-*.log
+*.log__pycache__/
