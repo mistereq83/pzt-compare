@@ -230,7 +230,29 @@
 
 <script>
 const comparisonId = '{{ comparison.id }}';
-let markers = {{ comparison.markers | tojson | safe }};
+let rawMarkers = {{ comparison.markers | tojson | safe }};
+
+// Normalize markers: handle both old format (x 0-1, badge) and new format (x 0-100, type)
+let markers = (rawMarkers || []).map(function(m) {
+  var nm = Object.assign({}, m);
+  // Fix x/y: if values are 0-1, convert to percent
+  if (nm.x !== undefined && nm.x <= 1) nm.x = nm.x * 100;
+  if (nm.y !== undefined && nm.y <= 1) nm.y = nm.y * 100;
+  // Fix type: map badge to type if type is missing
+  if (!nm.type && nm.badge) {
+    var map = {'new':'new', 'chg':'change', 'del':'deleted'};
+    nm.type = map[nm.badge] || 'change';
+  }
+  if (!nm.type) nm.type = 'change';
+  // Fix 'now' -> 'new' field name
+  if (nm['now'] && !nm['new']) { nm['new'] = nm['now']; }
+  if (!nm['new']) nm['new'] = nm.now || '';
+  if (!nm.old) nm.old = '';
+  if (!nm.note) nm.note = '';
+  if (!nm.title) nm.title = 'Zmiana ' + (nm.id + 1);
+  return nm;
+});
+
 let addMarkerMode = false;
 
 // === View switching ===
