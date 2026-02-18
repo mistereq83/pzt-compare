@@ -78,7 +78,7 @@
   .layers-container{
     position:relative;margin:1rem;border-radius:12px;overflow:hidden;
     background:#fff;border:1px solid var(--border);box-shadow:0 4px 12px rgba(0,61,108,0.1);
-    cursor:grab;max-height:55vh;
+    cursor:grab;height:55vh;
   }
   .layers-container.dragging{cursor:grabbing;}
   .layers-container .zoom-viewport{
@@ -127,7 +127,7 @@
   .plan-container{
     position:relative;margin:0 1rem 1rem;border-radius:12px;overflow:hidden;
     background:var(--card);border:1px solid var(--border);box-shadow:0 4px 12px rgba(0,61,108,0.1);
-    cursor:grab;max-height:55vh;
+    cursor:grab;height:55vh;
   }
   .plan-container.dragging{cursor:grabbing;}
   .plan-container .zoom-viewport{
@@ -924,14 +924,7 @@ function zoomOut(containerId) {
   zoomAtPoint(containerId, rect.width / 2, rect.height / 2, 1 / 1.3);
 }
 
-function zoomReset(containerId) {
-  const state = zoomStates[containerId];
-  state.scale = 1;
-  state.tx = 0;
-  state.ty = 0;
-  applyTransform(containerId, true);
-  showZoomInfo(containerId);
-}
+// zoomReset is defined after autoFit below
 
 // Zoom by factor, keeping the point (cx, cy) in container-local coords fixed
 function zoomAtPoint(containerId, cx, cy, factor) {
@@ -982,14 +975,9 @@ function setupZoomPan(containerId) {
   const viewport = document.getElementById(getViewportId(containerId));
   viewport.style.transition = 'none';
 
-  // Wheel zoom — zoom toward cursor
+  // Mouse wheel: do nothing (only +/- buttons for zoom)
   container.addEventListener('wheel', function(e) {
-    e.preventDefault();
-    const rect = container.getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-    zoomAtPoint(containerId, cx, cy, factor);
+    e.preventDefault(); // prevent page scroll when over container
   }, { passive: false });
 
   // Drag pan — translate in screen space (1:1 with mouse movement)
@@ -1096,6 +1084,42 @@ function setupZoomPan(containerId) {
   });
 }
 
+// Auto-fit: scale image to fill container on load
+function autoFit(containerId) {
+  const container = document.getElementById(containerId);
+  const viewport = document.getElementById(getViewportId(containerId));
+  const img = viewport.querySelector('img');
+  if (!img) return;
+  
+  const doFit = () => {
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    const iw = img.offsetWidth || img.naturalWidth;
+    const ih = img.offsetHeight || img.naturalHeight;
+    if (!iw || !ih || !cw || !ch) return;
+    
+    // Scale to fit (contain)
+    const scale = Math.min(cw / iw, ch / ih);
+    const state = zoomStates[containerId];
+    state.scale = scale;
+    // Center the image
+    state.tx = (cw - iw * scale) / 2;
+    state.ty = (ch - ih * scale) / 2;
+    applyTransform(containerId, false);
+  };
+  
+  if (img.complete && img.naturalWidth) {
+    doFit();
+  } else {
+    img.addEventListener('load', doFit);
+  }
+}
+
+function zoomReset(containerId) {
+  autoFit(containerId);
+  showZoomInfo(containerId);
+}
+
 // === Initialization ===
 document.addEventListener('DOMContentLoaded', function() {
   renderMarkers();
@@ -1103,6 +1127,10 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initialize zoom/pan for both containers
   setupZoomPan('layersBox');
   setupZoomPan('plan-markers');
+  
+  // Auto-fit images to containers
+  autoFit('layersBox');
+  autoFit('plan-markers');
   
   // Click outside to close popups
   document.addEventListener('click', function(e) {
