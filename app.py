@@ -376,11 +376,26 @@ def analyze_differences(comp_id, img1_path, img2_path):
         
         print(f"Found {len(significant_regions)} change regions")
         
-        # 2. Prepare OpenAI Vision API request
+        # 2. Prepare OpenAI Vision API request (optional — falls back to CV-only markers)
         openai_api_key = os.environ.get('OPENAI_API_KEY')
         if not openai_api_key:
-            print("OPENAI_API_KEY not found in environment")
-            return []
+            print("OPENAI_API_KEY not set — generating CV-only markers without AI descriptions")
+            # Generate basic markers from contour detection alone
+            cv_markers = []
+            for i, region in enumerate(significant_regions):
+                cv_markers.append({
+                    'id': i,
+                    'x': round(region['x'] * 100, 1),
+                    'y': round(region['y'] * 100, 1),
+                    'title': f'Zmiana {i+1}',
+                    'type': 'change',
+                    'old': 'Wykryto różnicę (brak opisu AI)',
+                    'new': 'Wykryto różnicę (brak opisu AI)',
+                    'note': f'Obszar zmiany: {region["area"]:.0f} px²',
+                    'auto_generated': True
+                })
+            print(f"Generated {len(cv_markers)} CV-only markers")
+            return cv_markers
         
         # Encode images to base64
         img1_b64 = encode_image_to_base64(img1_path)
@@ -485,14 +500,17 @@ Odpowiedz w formacie JSON:
                     }
                     badge = badge_map.get(change_type, 'chg')
                     
+                    # Frontend expects x/y as percentage (0-100), type as full word
+                    type_map = {'new': 'new', 'chg': 'change', 'del': 'deleted',
+                                'change': 'change', 'delete': 'deleted'}
                     marker = {
                         'id': i,
-                        'x': region['x'],
-                        'y': region['y'],
+                        'x': round(region['x'] * 100, 1),
+                        'y': round(region['y'] * 100, 1),
                         'title': region_data.get('title', f'Zmiana {i+1}'),
-                        'badge': badge,
+                        'type': type_map.get(change_type, 'change'),
                         'old': region_data.get('was', ''),
-                        'now': region_data.get('is', ''),
+                        'new': region_data.get('is', ''),
                         'note': region_data.get('note', ''),
                         'auto_generated': True
                     }
