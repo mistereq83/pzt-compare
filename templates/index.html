@@ -3,54 +3,70 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PZT Compare v2</title>
+<title>PZT Compare — Ekolan</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a;
-    --accent:#4f8cff; --red:#ff6b4f; --green:#34d399;
-    --yellow:#fbbf24; --text:#e2e4ea; --muted:#8b8fa3;
+    --navy: #003d6c; --navy-light: #28486e; --orange: #f58220; --green: #6bb98f; --red: #e01e20;
+    --bg: #f5f5f5; --card: #ffffff; --border: #e0e0e0; --text: #262626; --muted: #636363;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Inter',-apple-system,sans-serif; background:var(--bg); color:var(--text); }
+  body { font-family:'Poppins',-apple-system,sans-serif; background:var(--bg); color:var(--text); }
 
-  header { padding:1.5rem; border-bottom:1px solid var(--border); }
-  header h1 { font-size:1.8rem; font-weight:700; margin-bottom:.5rem; }
-  header p { color:var(--muted); font-size:.9rem; }
+  header { 
+    background:var(--navy); color:#fff; padding:1.5rem; 
+    display:flex; align-items:center; gap:1rem;
+  }
+  .header-logo { height:50px; object-fit:contain; }
+  .header-content { flex:1; }
+  header h1 { font-size:1.8rem; font-weight:600; margin-bottom:.3rem; }
+  header p { opacity:.9; font-size:.9rem; font-weight:300; }
 
-  .toolbar { padding:1rem 1.5rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; }
+  .toolbar { 
+    background:var(--card); padding:1rem 1.5rem; display:flex; justify-content:space-between; 
+    align-items:center; flex-wrap:wrap; gap:1rem; border-bottom:1px solid var(--border);
+  }
   .btn { 
-    padding:.7rem 1.2rem; border-radius:8px; border:none; font-weight:600; cursor:pointer; transition:all .15s; text-decoration:none; display:inline-block; font-size:.85rem;
+    padding:.7rem 1.2rem; border-radius:8px; border:none; font-weight:600; cursor:pointer; 
+    transition:all .2s; text-decoration:none; display:inline-block; font-size:.85rem;
   }
-  .btn-primary { background:var(--accent); color:#fff; }
-  .btn-primary:hover { background:#3d7ae6; }
+  .btn-primary { background:var(--navy); color:#fff; }
+  .btn-primary:hover { background:var(--navy-light); transform:translateY(-1px); }
+  .btn-orange { background:var(--orange); color:#fff; }
+  .btn-orange:hover { background:#e8701a; transform:translateY(-1px); }
   .btn-danger { background:var(--red); color:#fff; }
-  .btn-danger:hover { background:#e85d47; }
+  .btn-danger:hover { background:#c41a1c; }
 
-  .comparisons-grid { padding:0 1.5rem 2rem; display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:1rem; }
+  .comparisons-grid { padding:1.5rem; display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:1.5rem; }
   .comparison-card { 
-    background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; transition:all .2s;
+    background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; 
+    transition:all .2s; box-shadow: 0 2px 8px rgba(0,61,108,0.08);
   }
-  .comparison-card:hover { border-color:var(--accent); transform:translateY(-2px); }
+  .comparison-card:hover { 
+    border-color:var(--navy); transform:translateY(-2px); 
+    box-shadow: 0 4px 20px rgba(0,61,108,0.15); 
+  }
 
-  .card-preview { aspect-ratio:4/3; overflow:hidden; background:#fff; position:relative; }
+  .card-preview { aspect-ratio:4/3; overflow:hidden; background:#fafafa; position:relative; border-bottom:1px solid var(--border); }
   .card-preview img { width:100%; height:100%; object-fit:contain; }
   .card-preview:empty::after { 
     content:'📋'; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); 
-    font-size:3rem; opacity:.3;
+    font-size:3rem; color:var(--muted); opacity:.3;
   }
 
   .card-content { padding:1rem 1.25rem; }
-  .card-title { font-weight:700; font-size:.95rem; margin-bottom:.3rem; }
-  .card-desc { color:var(--muted); font-size:.8rem; margin-bottom:.8rem; line-height:1.4; }
-  .card-date { color:var(--muted); font-size:.7rem; margin-bottom:1rem; }
+  .card-title { font-weight:600; font-size:1rem; margin-bottom:.4rem; color:var(--navy); }
+  .card-desc { color:var(--muted); font-size:.85rem; margin-bottom:.8rem; line-height:1.5; }
+  .card-date { color:var(--muted); font-size:.75rem; margin-bottom:1rem; }
 
-  .card-actions { display:flex; gap:.5rem; }
-  .btn-sm { padding:.45rem .8rem; font-size:.75rem; }
+  .card-actions { display:flex; gap:.6rem; }
+  .btn-sm { padding:.5rem .9rem; font-size:.8rem; }
 
   .empty-state { 
-    text-align:center; padding:3rem 1.5rem; color:var(--muted);
+    text-align:center; padding:4rem 1.5rem; color:var(--muted); background:var(--card);
+    margin:1.5rem; border-radius:12px; border:1px solid var(--border);
   }
-  .empty-state h2 { font-size:1.2rem; margin-bottom:.5rem; }
+  .empty-state h2 { font-size:1.3rem; margin-bottom:.8rem; color:var(--navy); font-weight:600; }
 
   @media(max-width:768px) {
     .comparisons-grid { grid-template-columns:1fr; }
@@ -61,15 +77,18 @@
 <body>
 
 <header>
-  <h1>🏗️ PZT Compare v2</h1>
-  <p>Porównywarka rysunków budowlanych z kalibracją półautomatyczną</p>
+  <img src="/static/ekolan_logo.png" alt="Ekolan" class="header-logo">
+  <div class="header-content">
+    <h1>PZT Compare</h1>
+    <p>Porównywarka rysunków budowlanych z kalibracją półautomatyczną</p>
+  </div>
 </header>
 
 <div class="toolbar">
-  <div>
+  <div style="color:var(--navy); font-weight:600;">
     <strong>{{ comparisons|length }}</strong> porównań
   </div>
-  <a href="/new" class="btn btn-primary">➕ Nowe porównanie</a>
+  <a href="/new" class="btn btn-orange">➕ Nowe porównanie</a>
 </div>
 
 {% if comparisons %}

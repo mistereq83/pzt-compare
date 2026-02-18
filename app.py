@@ -64,32 +64,43 @@ def login_page():
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PZT Compare — Logowanie</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root {{ --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a; --accent:#4f8cff; --text:#e2e4ea; --muted:#8b8fa3; --red:#ff6b4f; }}
+  :root {{ 
+    --navy: #003d6c; --orange: #f58220; --green: #6bb98f; --red: #e01e20;
+    --bg: #f5f5f5; --card: #ffffff; --border: #e0e0e0; --text: #262626; --muted: #636363;
+  }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ font-family:'Inter',-apple-system,sans-serif; background:var(--bg); color:var(--text);
+  body {{ font-family:'Poppins',-apple-system,sans-serif; background:var(--bg); color:var(--text);
          display:flex; align-items:center; justify-content:center; min-height:100vh; }}
   .login-box {{ background:var(--card); border:1px solid var(--border); border-radius:16px;
-               padding:2.5rem; width:100%; max-width:380px; text-align:center; }}
-  .login-box h1 {{ font-size:1.4rem; margin-bottom:.3rem; }}
-  .login-box p {{ color:var(--muted); font-size:.85rem; margin-bottom:1.5rem; }}
+               padding:2.5rem; width:100%; max-width:380px; text-align:center; 
+               box-shadow: 0 4px 20px rgba(0,61,108,0.1); }}
+  .logo {{ margin-bottom: 1.5rem; }}
+  .logo img {{ height: 60px; object-fit: contain; }}
+  .login-box h1 {{ font-size:1.8rem; margin-bottom:.5rem; color:var(--navy); font-weight:600; }}
+  .login-box p {{ color:var(--muted); font-size:.95rem; margin-bottom:2rem; }}
   .login-box input {{
     width:100%; padding:.8rem 1rem; border:1px solid var(--border); border-radius:8px;
-    background:var(--bg); color:var(--text); font-size:1rem; text-align:center;
-    letter-spacing:2px; margin-bottom:1rem;
+    background:var(--card); color:var(--text); font-size:1rem; text-align:center;
+    letter-spacing:2px; margin-bottom:1rem; transition: border-color 0.2s;
   }}
-  .login-box input:focus {{ outline:none; border-color:var(--accent); }}
+  .login-box input:focus {{ outline:none; border-color:var(--navy); }}
   .login-box button {{
-    width:100%; padding:.8rem; border:none; border-radius:8px; background:var(--accent);
-    color:#fff; font-size:.95rem; font-weight:600; cursor:pointer; transition:all .15s;
+    width:100%; padding:.9rem; border:none; border-radius:8px; background:var(--orange);
+    color:#fff; font-size:.95rem; font-weight:600; cursor:pointer; transition:all .2s;
   }}
-  .login-box button:hover {{ background:#3d7ae6; }}
-  .error {{ color:var(--red); font-size:.85rem; margin-bottom:1rem; }}
+  .login-box button:hover {{ background:#e8701a; transform: translateY(-1px); }}
+  .error {{ color:var(--red); font-size:.9rem; margin-bottom:1rem; padding:.5rem; 
+            background: #ffeae8; border-radius:6px; border:1px solid #ffc4c4; }}
 </style>
 </head>
 <body>
 <form class="login-box" method="POST">
-  <h1>🔒 PZT Compare</h1>
+  <div class="logo">
+    <img src="/static/ekolan_logo.png" alt="Ekolan">
+  </div>
+  <h1>PZT Compare</h1>
   <p>Porównywanie planów zagospodarowania terenu</p>
   {"<div class='error'>" + error + "</div>" if error else ""}
   <input type="password" name="password" placeholder="Hasło" autofocus>
@@ -951,6 +962,10 @@ def delete_comparison(comp_id):
     return jsonify({'error': 'Comparison not found'}), 404
 
 # Static file serving
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('static', filename)
+
 @app.route('/uploads/<path:filename>')
 def serve_uploads(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)

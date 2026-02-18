@@ -3,20 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Nowe porównanie - PZT Compare v2</title>
+<title>Nowe porównanie — PZT Compare</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a;
-    --accent:#4f8cff; --red:#ff6b4f; --green:#34d399;
-    --yellow:#fbbf24; --text:#e2e4ea; --muted:#8b8fa3;
+    --navy: #003d6c; --navy-light: #28486e; --orange: #f58220; --green: #6bb98f; --red: #e01e20;
+    --bg: #f5f5f5; --card: #ffffff; --border: #e0e0e0; --text: #262626; --muted: #636363;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Inter',-apple-system,sans-serif; background:var(--bg); color:var(--text); }
+  body { font-family:'Poppins',-apple-system,sans-serif; background:var(--bg); color:var(--text); }
 
-  header { padding:1rem 1.5rem; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:1rem; }
-  header h1 { font-size:1.2rem; font-weight:700; }
-  .back-btn { color:var(--muted); text-decoration:none; font-size:.9rem; }
-  .back-btn:hover { color:var(--text); }
+  header { 
+    background:var(--navy); color:#fff; padding:1rem 1.5rem; display:flex; align-items:center; gap:1rem; 
+  }
+  .header-logo { height:40px; object-fit:contain; }
+  header h1 { font-size:1.2rem; font-weight:600; }
+  .back-btn { color:rgba(255,255,255,0.8); text-decoration:none; font-size:.9rem; transition:color 0.2s; }
+  .back-btn:hover { color:#fff; }
 
   .step { padding:1.5rem; display:none; }
   .step.active { display:block; }
@@ -27,12 +30,13 @@
   .upload-box { 
     border:2px dashed var(--border); border-radius:12px; padding:2rem; text-align:center; 
     background:var(--card); cursor:pointer; transition:all .2s; position:relative;
+    box-shadow: 0 2px 8px rgba(0,61,108,0.05);
   }
-  .upload-box:hover { border-color:var(--accent); }
-  .upload-box.dragover { border-color:var(--green); background:rgba(52,211,153,.05); }
-  .upload-icon { font-size:2rem; margin-bottom:.5rem; }
+  .upload-box:hover { border-color:var(--navy); }
+  .upload-box.dragover { border-color:var(--green); background:rgba(107,185,143,.05); }
+  .upload-icon { font-size:2rem; margin-bottom:.5rem; color:var(--muted); }
   .upload-preview { max-width:100%; max-height:180px; border-radius:8px; }
-  .upload-box.has-file { border-color:var(--green); border-style:solid; background:rgba(52,211,153,.05); }
+  .upload-box.has-file { border-color:var(--green); border-style:solid; background:rgba(107,185,143,.05); }
   .upload-filled { display:flex; flex-direction:column; align-items:center; gap:.5rem; position:relative; width:100%; }
   .file-icon { font-size:2.5rem; }
   .file-info { text-align:center; }
@@ -53,10 +57,16 @@
   .form-group input:focus { outline:none; border-color:var(--accent); }
 
   /* ROI Step */
-  .roi-info { padding:1rem; background:rgba(79,140,255,.1); margin-bottom:1rem; border-radius:8px; font-size:.85rem; }
+  .roi-info { 
+    padding:1rem; background:rgba(0,61,108,.05); border:1px solid rgba(0,61,108,.1); 
+    margin-bottom:1rem; border-radius:8px; font-size:.85rem; color:var(--navy);
+  }
   
   .roi-container { margin-bottom:1.5rem; }
-  .roi-panel { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; max-width:800px; margin:0 auto; }
+  .roi-panel { 
+    background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; 
+    max-width:800px; margin:0 auto; box-shadow: 0 4px 12px rgba(0,61,108,0.1);
+  }
   .panel-content { position:relative; }
   .roi-image { width:100%; display:block; }
   .roi-overlay { 
@@ -68,28 +78,33 @@
 
   /* Calibration Step */
   .calibration-container { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem; }
-  .calibration-panel { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
-  .panel-header { padding:.8rem 1rem; background:rgba(0,0,0,.2); font-weight:600; font-size:.85rem; }
+  .calibration-panel { 
+    background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden;
+    box-shadow: 0 4px 12px rgba(0,61,108,0.1);
+  }
+  .panel-header { 
+    padding:.8rem 1rem; background:var(--navy); color:#fff; font-weight:600; font-size:.85rem; 
+  }
   .panel-content { position:relative; }
   .calibration-image { width:100%; display:block; cursor:crosshair; }
 
   .calibration-point {
     position:absolute; width:24px; height:24px; border-radius:50%; 
-    background:var(--accent); color:#fff; font-size:11px; font-weight:700;
+    background:var(--navy); color:#fff; font-size:11px; font-weight:700;
     display:flex; align-items:center; justify-content:center; 
     transform:translate(-50%, -50%); cursor:pointer; z-index:10;
-    border:2px solid #fff; box-shadow:0 2px 8px rgba(0,0,0,.3);
+    border:2px solid #fff; box-shadow:0 2px 8px rgba(0,61,108,.3);
     transition:all .15s;
   }
   .calibration-point:hover { transform:translate(-50%, -50%) scale(1.2); }
   .calibration-point.active { background:var(--green); }
   .calibration-point.temp-point {
-    background:var(--yellow); 
+    background:var(--orange); 
     animation:pulse 0.6s ease-in-out infinite alternate;
   }
   .calibration-point.snapped {
     background:var(--green);
-    box-shadow:0 0 0 2px var(--green), 0 2px 8px rgba(0,0,0,.3);
+    box-shadow:0 0 0 2px var(--green), 0 2px 8px rgba(107,185,143,.3);
   }
   
   @keyframes pulse {
@@ -97,22 +112,27 @@
     to { opacity: 0.8; transform: translate(-50%, -50%) scale(1.0); }
   }
 
-  .calibration-info { padding:1rem; background:rgba(79,140,255,.1); margin-bottom:1rem; border-radius:8px; font-size:.85rem; }
+  .calibration-info { 
+    padding:1rem; background:rgba(0,61,108,.05); border:1px solid rgba(0,61,108,.1); 
+    margin-bottom:1rem; border-radius:8px; font-size:.85rem; color:var(--navy);
+  }
 
   .progress-bar { 
     width:100%; height:6px; background:var(--border); border-radius:3px; overflow:hidden; margin-bottom:1rem;
   }
-  .progress-fill { height:100%; background:var(--accent); transition:width .3s; }
+  .progress-fill { height:100%; background:var(--orange); transition:width .3s; }
 
   .btn { 
     padding:.7rem 1.2rem; border-radius:8px; border:none; font-weight:600; cursor:pointer; 
-    transition:all .15s; font-size:.85rem; text-decoration:none; display:inline-block;
+    transition:all .2s; font-size:.85rem; text-decoration:none; display:inline-block;
   }
   .btn:disabled { opacity:.5; cursor:not-allowed; }
-  .btn-primary { background:var(--accent); color:#fff; }
-  .btn-primary:hover:not(:disabled) { background:#3d7ae6; }
+  .btn-primary { background:var(--navy); color:#fff; }
+  .btn-primary:hover:not(:disabled) { background:var(--navy-light); transform:translateY(-1px); }
+  .btn-orange { background:var(--orange); color:#fff; }
+  .btn-orange:hover:not(:disabled) { background:#e8701a; transform:translateY(-1px); }
   .btn-secondary { background:var(--card); color:var(--text); border:1px solid var(--border); }
-  .btn-secondary:hover { background:var(--border); }
+  .btn-secondary:hover { background:#f8f9fa; }
 
   .btn-group { display:flex; gap:.5rem; justify-content:space-between; margin-top:1rem; }
 
@@ -125,6 +145,7 @@
 <body>
 
 <header>
+  <img src="/static/ekolan_logo.png" alt="Ekolan" class="header-logo">
   <a href="/" class="back-btn">← Powrót</a>
   <h1>Nowe porównanie</h1>
 </header>
@@ -194,7 +215,7 @@
   
   <div class="btn-group">
     <a href="/" class="btn btn-secondary">Anuluj</a>
-    <button class="btn btn-primary" id="upload-btn" disabled onclick="uploadFiles()">Następny krok</button>
+    <button class="btn btn-orange" id="upload-btn" disabled onclick="uploadFiles()">Następny krok</button>
   </div>
 </div>
 
@@ -220,7 +241,7 @@
   
   <div class="btn-group">
     <button class="btn btn-secondary" onclick="skipROI()">Cały rysunek → Generuj</button>
-    <button class="btn btn-primary" id="roi-btn" disabled onclick="confirmROI()">Generuj porównanie</button>
+    <button class="btn btn-orange" id="roi-btn" disabled onclick="confirmROI()">Generuj porównanie</button>
   </div>
 </div>
 
@@ -258,7 +279,7 @@
   
   <div class="btn-group">
     <button class="btn btn-secondary" onclick="resetCalibration()">Wyczyść punkty</button>
-    <button class="btn btn-primary" id="calibrate-btn" disabled onclick="goToROI()">Następny krok</button>
+    <button class="btn btn-orange" id="calibrate-btn" disabled onclick="goToROI()">Następny krok</button>
   </div>
 </div>
 
