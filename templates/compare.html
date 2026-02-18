@@ -66,6 +66,24 @@
   .legend-strip{display:flex;gap:1.25rem;padding:.5rem 1.5rem;font-size:.75rem;color:var(--muted);flex-wrap:wrap;}
   .legend-dot{width:10px;height:10px;border-radius:50%;border:2px solid #fff;display:inline-block;margin-right:.3rem;vertical-align:middle;}
 
+  /* Severity filters */
+  .severity-filters{display:flex;gap:.5rem;padding:.5rem 1.5rem;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);}
+  .severity-filter{
+    display:flex;align-items:center;gap:.4rem;padding:.4rem .8rem;
+    border-radius:6px;border:2px solid var(--border);background:var(--card);
+    cursor:pointer;font-size:.8rem;font-weight:500;transition:all .15s;
+    user-select:none;
+  }
+  .severity-filter.on{border-color:var(--accent);color:var(--text);}
+  .severity-filter.off{opacity:.4;}
+  .severity-filter .count{
+    background:rgba(255,255,255,.1);border-radius:10px;
+    padding:.15rem .4rem;font-size:.7rem;margin-left:.2rem;
+  }
+  .sf-critical.on{border-color:var(--red);} .sf-critical .dot{background:var(--red);}
+  .sf-important.on{border-color:var(--yellow);} .sf-important .dot{background:var(--yellow);}
+  .sf-minor.on{border-color:var(--accent);} .sf-minor .dot{background:var(--accent);}
+
   .markers-toolbar{padding:.5rem 1.5rem;display:flex;gap:.5rem;flex-wrap:wrap;}
   .btn{padding:.4rem .8rem;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;font-size:.75rem;transition:all .15s;text-decoration:none;display:inline-block;}
   .btn:hover{background:var(--border);}
@@ -84,6 +102,14 @@
   }
   .marker:hover{transform:translate(-50%,-50%) scale(1.25);}
   .marker.active{transform:translate(-50%,-50%) scale(1.35);box-shadow:0 0 20px rgba(79,140,255,.5);z-index:15;}
+  .marker.hidden{display:none !important;}
+  
+  /* Marker colors by severity (new system) */
+  .marker.s-critical{background:var(--red);}
+  .marker.s-important{background:var(--yellow);color:#000;}
+  .marker.s-minor{background:var(--accent);}
+  
+  /* Legacy marker colors by type (for backward compatibility) */
   .t-new{background:var(--green);} .t-new.active{background:#10b981;}
   .t-change{background:var(--yellow);color:#000;} .t-change.active{background:#f59e0b;}
   .t-deleted{background:var(--red);} .t-deleted.active{background:#ef4444;}
@@ -205,6 +231,18 @@
     <div><span class="legend-dot" style="background:var(--red);"></span> Usunięte</div>
   </div>
   
+  <div class="severity-filters">
+    <div class="severity-filter on sf-critical" data-severity="critical" onclick="toggleSeverityFilter('critical')">
+      🔴 Krytyczne <span class="count" id="count-critical">0</span>
+    </div>
+    <div class="severity-filter on sf-important" data-severity="important" onclick="toggleSeverityFilter('important')">
+      🟡 Istotne <span class="count" id="count-important">0</span>
+    </div>
+    <div class="severity-filter off sf-minor" data-severity="minor" onclick="toggleSeverityFilter('minor')">
+      🔵 Drobne <span class="count" id="count-minor">0</span>
+    </div>
+  </div>
+  
   <div class="markers-toolbar">
     <button class="btn" id="add-marker-btn" onclick="toggleAddMode()">➕ Dodaj marker</button>
     <button class="btn" onclick="loadMarkers()">🔄 Odśwież</button>
@@ -232,6 +270,29 @@
 const comparisonId = '{{ comparison.id }}';
 let rawMarkers = {{ comparison.markers | tojson | safe }};
 
+// Categories with labels and default severity
+const CATEGORIES = {
+  lot_division: {label:'Podział działki', severity:'critical'},
+  building_layout: {label:'Układ budynków', severity:'critical'},
+  land_use: {label:'Przeznaczenie terenu', severity:'critical'},
+  building_line: {label:'Linia zabudowy', severity:'critical'},
+  building_dimensions: {label:'Wymiary budynku', severity:'important'},
+  bio_area: {label:'Pow. biol. czynna', severity:'important'},
+  infrastructure: {label:'Infrastruktura', severity:'important'},
+  setbacks: {label:'Strefy/odległości', severity:'important'},
+  dimensions: {label:'Wymiary/koty', severity:'minor'},
+  geodetic: {label:'Dane geodezyjne', severity:'minor'},
+  legend: {label:'Legenda/opis', severity:'minor'},
+  graphics: {label:'Grafika/oznaczenia', severity:'minor'},
+  change: {label:'Zmiana', severity:'important'}
+};
+
+const SEVERITY_COLORS = {
+  critical: 'var(--red)',
+  important: 'var(--yellow)',
+  minor: 'var(--accent)'
+};
+
 // Normalize markers: handle both old format (x 0-1, badge) and new format (x 0-100, type)
 let markers = (rawMarkers || []).map(function(m) {
   var nm = Object.assign({}, m);
@@ -250,10 +311,22 @@ let markers = (rawMarkers || []).map(function(m) {
   if (!nm.old) nm.old = '';
   if (!nm.note) nm.note = '';
   if (!nm.title) nm.title = 'Zmiana ' + (nm.id + 1);
+  
+  // Backward compatibility: add category/severity if missing
+  if (!nm.severity) nm.severity = 'important';
+  if (!nm.category) nm.category = 'change';
+  
   return nm;
 });
 
 let addMarkerMode = false;
+
+// Severity filters state (critical ON, important ON, minor OFF by default)
+let severityFilters = {
+  critical: true,
+  important: true,
+  minor: false
+};
 
 // === View switching ===
 function switchView(btn, id) {
@@ -307,10 +380,26 @@ function showMarkerDetails(popup, data) {
   const bc = {'new':'b-new','change':'b-change','deleted':'b-deleted'}[data.type];
   const bt = {'new':'Nowe','change':'Zmiana','deleted':'Usunięte'}[data.type];
   const oldCls = data.type === 'deleted' ? 'val-gone' : 'val-old';
+  
+  // Category and severity info
+  const categoryLabel = CATEGORIES[data.category || 'change']?.label || 'Zmiana';
+  const severity = data.severity || 'important';
+  const severityColor = SEVERITY_COLORS[severity];
+  const severityLabel = {'critical':'Krytyczny','important':'Istotny','minor':'Drobny'}[severity];
 
   popup.innerHTML = `
     <button class="popup-close" onclick="closeAllPopups();">✕</button>
-    <div class="popup-title">${data.title} <span class="popup-badge ${bc}">${bt}</span></div>
+    <div class="popup-title">
+      ${data.title} 
+      <span class="popup-badge ${bc}">${bt}</span>
+    </div>
+    <div class="popup-row">
+      <div class="popup-label">Kategoria</div>
+      <div class="popup-val" style="display:flex;align-items:center;gap:.4rem;">
+        <span style="width:8px;height:8px;border-radius:50%;background:${severityColor};"></span>
+        ${categoryLabel} · ${severityLabel}
+      </div>
+    </div>
     <div class="popup-row"><div class="popup-label">Było</div><div class="popup-val ${oldCls}">${data.old}</div></div>
     <div class="popup-row"><div class="popup-label">Jest</div><div class="popup-val val-new">${data.new}</div></div>
     <div class="popup-note">${data.note}</div>
@@ -325,6 +414,12 @@ function showMarkerForm(popup, marker, editData = null) {
   const isEdit = editData !== null;
   const title = isEdit ? 'Edycja markera' : 'Nowy marker';
   
+  // Build category options
+  const categoryOptions = Object.keys(CATEGORIES).map(key => {
+    const selected = editData?.category === key ? 'selected' : '';
+    return `<option value="${key}" ${selected}>${CATEGORIES[key].label}</option>`;
+  }).join('');
+  
   popup.innerHTML = `
     <button class="popup-close" onclick="closeAllPopups();">✕</button>
     <div class="popup-title">${title}</div>
@@ -337,6 +432,18 @@ function showMarkerForm(popup, marker, editData = null) {
         <option value="new" ${editData?.type === 'new' ? 'selected' : ''}>Nowe</option>
         <option value="change" ${editData?.type === 'change' ? 'selected' : ''}>Zmienione</option>
         <option value="deleted" ${editData?.type === 'deleted' ? 'selected' : ''}>Usunięte</option>
+      </select>
+      
+      <label>Kategoria</label>
+      <select id="marker-category" onchange="updateSeverityFromCategory()">
+        ${categoryOptions}
+      </select>
+      
+      <label>Priorytet</label>
+      <select id="marker-severity">
+        <option value="critical" ${editData?.severity === 'critical' ? 'selected' : ''}>🔴 Krytyczny</option>
+        <option value="important" ${editData?.severity === 'important' ? 'selected' : ''}>🟡 Istotny</option>
+        <option value="minor" ${editData?.severity === 'minor' ? 'selected' : ''}>🔵 Drobny</option>
       </select>
       
       <label>Było</label>
@@ -354,6 +461,11 @@ function showMarkerForm(popup, marker, editData = null) {
       </div>
     </div>
   `;
+  
+  // Auto-update severity when category changes
+  if (editData) {
+    setTimeout(() => updateSeverityFromCategory(), 50);
+  }
 }
 
 function positionPopup(popup, marker) {
@@ -372,32 +484,96 @@ function positionPopup(popup, marker) {
   popup.style.left = left + 'px';
 }
 
+// === Severity filter management ===
+function toggleSeverityFilter(severity) {
+  severityFilters[severity] = !severityFilters[severity];
+  
+  // Update button state
+  const btn = document.querySelector(`[data-severity="${severity}"]`);
+  if (severityFilters[severity]) {
+    btn.classList.add('on');
+    btn.classList.remove('off');
+  } else {
+    btn.classList.add('off');
+    btn.classList.remove('on');
+  }
+  
+  // Update marker visibility
+  updateMarkerVisibility();
+  updateChangesTable();
+}
+
+function updateSeverityCounts() {
+  const counts = { critical: 0, important: 0, minor: 0 };
+  markers.forEach(m => {
+    const severity = m.severity || 'important';
+    counts[severity]++;
+  });
+  
+  document.getElementById('count-critical').textContent = counts.critical;
+  document.getElementById('count-important').textContent = counts.important;
+  document.getElementById('count-minor').textContent = counts.minor;
+}
+
+function updateMarkerVisibility() {
+  document.querySelectorAll('.marker').forEach(markerEl => {
+    const markerId = parseInt(markerEl.dataset.id);
+    const marker = markers.find(m => m.id === markerId);
+    if (marker) {
+      const severity = marker.severity || 'important';
+      const visible = severityFilters[severity];
+      
+      if (visible) {
+        markerEl.classList.remove('hidden');
+      } else {
+        markerEl.classList.add('hidden');
+      }
+    }
+  });
+}
+
 // === Marker management ===
 function renderMarkers() {
   // Clear existing markers
   document.querySelectorAll('.marker').forEach(m => m.remove());
+  
+  // Sort markers by severity priority (critical → important → minor)
+  const severityOrder = { critical: 0, important: 1, minor: 2 };
+  const sortedMarkers = [...markers].sort((a, b) => {
+    const aOrder = severityOrder[a.severity || 'important'];
+    const bOrder = severityOrder[b.severity || 'important'];
+    return aOrder - bOrder;
+  });
   
   // Render on layers view
   const layersBox = document.getElementById('layersBox');
   // Render on markers view
   const markersBox = document.getElementById('plan-markers');
   
-  markers.forEach((marker, index) => {
+  sortedMarkers.forEach((marker, sortIndex) => {
+    // Find original index for numbering
+    const originalIndex = markers.findIndex(m => m.id === marker.id);
+    
     // Layers view marker
-    const layersMarker = createMarkerElement(marker, index, 'popup-layers');
+    const layersMarker = createMarkerElement(marker, originalIndex, 'popup-layers');
     layersBox.appendChild(layersMarker);
     
     // Markers view marker
-    const markersMarker = createMarkerElement(marker, index, 'popup-markers');
+    const markersMarker = createMarkerElement(marker, originalIndex, 'popup-markers');
     markersBox.appendChild(markersMarker);
   });
   
+  updateSeverityCounts();
+  updateMarkerVisibility();
   updateChangesTable();
 }
 
 function createMarkerElement(markerData, index, popupId) {
   const marker = document.createElement('div');
-  marker.className = `marker t-${markerData.type}`;
+  const severity = markerData.severity || 'important';
+  
+  // Use severity for color (s-critical/s-important/s-minor), keep type for backward compatibility
+  marker.className = `marker s-${severity} t-${markerData.type}`;
   marker.style.left = markerData.x + '%';
   marker.style.top = markerData.y + '%';
   marker.dataset.id = markerData.id;
@@ -421,13 +597,39 @@ function updateChangesTable() {
   const tbody = document.getElementById('changes-table');
   tbody.innerHTML = '';
   
-  markers.forEach((marker, index) => {
+  // Sort by severity priority (critical → important → minor)
+  const severityOrder = { critical: 0, important: 1, minor: 2 };
+  const sortedMarkers = [...markers].sort((a, b) => {
+    const aOrder = severityOrder[a.severity || 'important'];
+    const bOrder = severityOrder[b.severity || 'important'];
+    return aOrder - bOrder;
+  });
+  
+  sortedMarkers.forEach((marker, sortIndex) => {
+    const severity = marker.severity || 'important';
+    
+    // Skip hidden markers
+    if (!severityFilters[severity]) return;
+    
+    const originalIndex = markers.findIndex(m => m.id === marker.id);
     const typeClass = {'new':'num-new','change':'num-change','deleted':'num-deleted'}[marker.type];
+    
+    // Add severity color dot
+    const severityColor = SEVERITY_COLORS[severity];
+    const categoryLabel = CATEGORIES[marker.category || 'change']?.label || 'Zmiana';
     
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td class="num-col"><span class="num-dot ${typeClass}">${index + 1}</span></td>
-      <td><strong>${marker.title}</strong></td>
+      <td class="num-col">
+        <span class="num-dot ${typeClass}">${originalIndex + 1}</span>
+      </td>
+      <td>
+        <div style="display:flex;align-items:center;gap:.4rem;">
+          <span style="width:8px;height:8px;border-radius:50%;background:${severityColor};display:inline-block;"></span>
+          <strong>${marker.title}</strong>
+        </div>
+        <div style="font-size:.7rem;color:var(--muted);margin-top:.2rem;">${categoryLabel}</div>
+      </td>
       <td class="cv1">${marker.old}</td>
       <td class="cv2">${marker.new}</td>
     `;
@@ -474,11 +676,25 @@ document.getElementById('plan-markers').addEventListener('click', function(e) {
   toggleAddMode(); // Exit add mode
 });
 
+// === Helper functions ===
+function updateSeverityFromCategory() {
+  const categorySelect = document.getElementById('marker-category');
+  const severitySelect = document.getElementById('marker-severity');
+  
+  if (categorySelect && severitySelect) {
+    const category = categorySelect.value;
+    const defaultSeverity = CATEGORIES[category]?.severity || 'important';
+    severitySelect.value = defaultSeverity;
+  }
+}
+
 // === API calls ===
 async function saveMarker(markerId, x, y) {
   const data = {
     title: document.getElementById('marker-title').value,
     type: document.getElementById('marker-type').value,
+    category: document.getElementById('marker-category')?.value || 'change',
+    severity: document.getElementById('marker-severity')?.value || 'important',
     old: document.getElementById('marker-old').value,
     new: document.getElementById('marker-new').value,
     note: document.getElementById('marker-note').value,

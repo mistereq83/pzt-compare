@@ -474,7 +474,9 @@ def analyze_differences(comp_id, img1_path, img2_path):
                 'old': '',
                 'new': '',
                 'note': f'Obszar: {region["area_pct"]:.1f}% rysunku',
-                'auto_generated': True
+                'auto_generated': True,
+                'category': 'change',
+                'severity': 'important'
             })
         
         log(f"Generated {len(markers)} CV markers")
@@ -524,9 +526,29 @@ Wykryto {len(regions)} regionów różnic:
 
 {region_desc}
 
-Dla KAŻDEGO regionu podaj krótki opis zmiany. Odpowiedz TYLKO poprawnym JSON (bez markdown):
+Dla KAŻDEGO regionu podaj krótki opis zmiany i przypisz KATEGORIĘ z jedną z poniższych opcji:
+
+KRYTYCZNE (critical):
+- lot_division: Podział/scalenie działki  
+- building_layout: Zmiana układu budynków (nowy, usunięty, przesunięty)
+- land_use: Zmiana przeznaczenia terenu
+- building_line: Zmiana linii zabudowy
+
+ISTOTNE (important):
+- building_dimensions: Zmiana wymiarów budynku / pow. zabudowy
+- bio_area: Zmiana powierzchni biologicznie czynnej
+- infrastructure: Infrastruktura (przyłącza, sieci, zjazdy)
+- setbacks: Strefy/odległości od granic
+
+DROBNE (minor):
+- dimensions: Wymiary/koty na rysunku
+- geodetic: Dane geodezyjne (numery działek, rzędne)
+- legend: Legenda/opis/tabliczka tytułowa
+- graphics: Kolorystyka/szrafury/oznaczenia
+
+Odpowiedz TYLKO poprawnym JSON (bez markdown):
 {{"changes": [
-  {{"id": 0, "title": "krótki tytuł", "type": "new|change|deleted", "was": "co było", "is": "co jest teraz", "note": "opcjonalny komentarz"}},
+  {{"id": 0, "title": "krótki tytuł", "type": "new|change|deleted", "was": "co było", "is": "co jest teraz", "note": "opcjonalny komentarz", "category": "category_name", "severity": "critical|important|minor"}},
   ...
 ]}}"""
 
@@ -562,6 +584,17 @@ Dla KAŻDEGO regionu podaj krótki opis zmiany. Odpowiedz TYLKO poprawnym JSON (
     
     type_map = {'new': 'new', 'change': 'change', 'delete': 'deleted', 'deleted': 'deleted'}
     
+    # Category to severity mapping for fallback
+    category_severity_map = {
+        'lot_division': 'critical', 'building_layout': 'critical',
+        'land_use': 'critical', 'building_line': 'critical',
+        'building_dimensions': 'important', 'bio_area': 'important',
+        'infrastructure': 'important', 'setbacks': 'important',
+        'dimensions': 'minor', 'geodetic': 'minor',
+        'legend': 'minor', 'graphics': 'minor',
+        'change': 'important'
+    }
+    
     enriched = []
     for i, marker in enumerate(cv_markers):
         m = dict(marker)
@@ -572,6 +605,22 @@ Dla KAŻDEGO regionu podaj krótki opis zmiany. Odpowiedz TYLKO poprawnym JSON (
             m['old'] = c.get('was', c.get('old', ''))
             m['new'] = c.get('is', c.get('new', ''))
             m['note'] = c.get('note', m['note'])
+            
+            # Add category and severity
+            category = c.get('category', 'change')
+            severity = c.get('severity')
+            
+            # Fallback: map category to severity if severity not provided
+            if not severity:
+                severity = category_severity_map.get(category, 'important')
+            
+            m['category'] = category
+            m['severity'] = severity
+        else:
+            # CV-only marker defaults
+            m['category'] = 'change'
+            m['severity'] = 'important'
+            
         enriched.append(m)
     
     return enriched
