@@ -203,7 +203,7 @@
   <h2>🔲 Zaznacz obszar do porównania (opcjonalne)</h2>
   
   <div class="roi-info">
-    <strong>Instrukcja:</strong> Narysuj prostokąt na rysunku, aby porównać tylko wybrany fragment. Możesz przesuwać i zmieniać rozmiar prostokąta. Kliknij "Cały rysunek" aby pominąć to i porównać całość.
+    <strong>Instrukcja:</strong> Narysuj prostokąt na rysunku, aby porównać tylko wybrany fragment. Możesz przesuwać i zmieniać rozmiar. Kliknij "Cały rysunek → Generuj" aby porównać całość.
   </div>
   
   <div class="roi-container">
@@ -219,8 +219,8 @@
   <div class="roi-status" id="roi-status">Narysuj prostokąt przeciągając myszką po obrazie</div>
   
   <div class="btn-group">
-    <button class="btn btn-secondary" onclick="skipROI()">Cały rysunek</button>
-    <button class="btn btn-primary" id="roi-btn" disabled onclick="confirmROI()">Następny krok</button>
+    <button class="btn btn-secondary" onclick="skipROI()">Cały rysunek → Generuj</button>
+    <button class="btn btn-primary" id="roi-btn" disabled onclick="confirmROI()">Generuj porównanie</button>
   </div>
 </div>
 
@@ -258,7 +258,7 @@
   
   <div class="btn-group">
     <button class="btn btn-secondary" onclick="resetCalibration()">Wyczyść punkty</button>
-    <button class="btn btn-primary" id="calibrate-btn" disabled onclick="processCalibration()">Generuj porównanie</button>
+    <button class="btn btn-primary" id="calibrate-btn" disabled onclick="goToROI()">Następny krok</button>
   </div>
 </div>
 
@@ -376,11 +376,11 @@ async function uploadFiles() {
     document.getElementById('v1-title').textContent = document.getElementById('v1-name').value || 'Wersja 1';
     document.getElementById('v2-title').textContent = document.getElementById('v2-name').value || 'Wersja 2';
     
-    // Setup ROI selection
-    setupROI();
+    // Setup calibration directly (ROI comes after calibration)
+    setupCalibration();
     
-    // Switch to ROI step
-    showStep('step-roi');
+    // Switch to calibration step
+    showStep('step-calibration');
     
   } catch (error) {
     alert('Błąd: ' + error.message);
@@ -616,11 +616,11 @@ function setupROI() {
   roiCtx = roiCanvas.getContext('2d');
   roiImg = document.getElementById('roi-img');
   
-  // Load first image for ROI selection
-  roiImg.src = document.getElementById('cal-img1').src;
+  // Load second image for ROI selection (reference frame after alignment)
+  roiImg.src = document.getElementById('cal-img2').src;
   
   // Update title
-  document.getElementById('roi-v1-title').textContent = document.getElementById('v1-name').value || 'Wersja 1 - zaznacz obszar';
+  document.getElementById('roi-v1-title').textContent = (document.getElementById('v2-name').value || 'Wersja 2') + ' — zaznacz obszar';
   
   roiImg.onload = function() {
     // Set canvas dimensions to match image
@@ -861,9 +861,15 @@ function handleROITouch(e) {
   }
 }
 
+function goToROI() {
+  // After calibration, show ROI selection on image 2 (reference frame)
+  setupROI();
+  showStep('step-roi');
+}
+
 function skipROI() {
   roiData = null;
-  proceedToCalibration();
+  processCalibration();
 }
 
 function confirmROI() {
@@ -879,15 +885,7 @@ function confirmROI() {
     roiData = null;
   }
   
-  proceedToCalibration();
-}
-
-function proceedToCalibration() {
-  // Setup calibration
-  setupCalibration();
-  
-  // Switch to calibration step
-  showStep('step-calibration');
+  processCalibration();
 }
 
 // Drag and drop support
