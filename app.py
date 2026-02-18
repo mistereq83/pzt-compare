@@ -140,43 +140,53 @@ def apply_transformation(img, matrix, target_size):
     return transformed
 
 def create_tinted_layer(image_array, tint_color):
-    """Create tinted layer from image array"""
+    """Create tinted layer from image array - tint lines, keep transparency for white"""
     if len(image_array.shape) == 3:
         gray = cv2.cvtColor(image_array, cv2.COLOR_BGR2GRAY)
     else:
         gray = image_array.copy()
     
-    # Create RGBA image
     h, w = gray.shape
     rgba = np.zeros((h, w, 4), dtype=np.uint8)
     
-    # White pixels become transparent
-    white_mask = gray > 240
-    non_white_mask = ~white_mask
+    # White pixels → transparent
+    # Near-white → semi-transparent tint
+    # Dark pixels → opaque tint
+    # Scale: alpha = 255 - gray (darker = more opaque)
+    alpha = (255 - gray).astype(np.float32)
     
-    # Apply tint to non-white pixels
-    rgba[non_white_mask, :3] = tint_color  # RGB
-    rgba[non_white_mask, 3] = 255 - gray[non_white_mask]  # Alpha based on darkness
-    rgba[white_mask, 3] = 0  # Transparent white
+    # Threshold: very light pixels (>240) become fully transparent
+    alpha[gray > 240] = 0
+    
+    # Boost contrast for mid-tones
+    alpha = np.clip(alpha * 1.5, 0, 255).astype(np.uint8)
+    
+    rgba[:, :, 0] = tint_color[0]  # B
+    rgba[:, :, 1] = tint_color[1]  # G
+    rgba[:, :, 2] = tint_color[2]  # R
+    rgba[:, :, 3] = alpha
     
     return rgba
 
 def create_clean_layer(image_array):
-    """Create clean layer with white->transparent"""
-    if len(image_array.shape) == 3:
-        gray = cv2.cvtColor(image_array, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = image_array.copy()
+    """Create clean layer with white->transparent, preserving original colors"""
+    if len(image_array.shape) == 2:
+        # Grayscale - convert to BGR
+        image_array = cv2.cvtColor(image_array, cv2.COLOR_GRAY2BGR)
     
-    h, w = gray.shape
+    h, w = image_array.shape[:2]
     rgba = np.zeros((h, w, 4), dtype=np.uint8)
     
+    gray = cv2.cvtColor(image_array, cv2.COLOR_BGR2GRAY)
     white_mask = gray > 240
     non_white_mask = ~white_mask
     
-    rgba[non_white_mask, :3] = 0  # Black lines
-    rgba[non_white_mask, 3] = 255  # Opaque
-    rgba[white_mask, 3] = 0  # Transparent white
+    # Preserve original colors (BGRA for cv2.imwrite)
+    rgba[non_white_mask, 0] = image_array[non_white_mask, 0]  # B
+    rgba[non_white_mask, 1] = image_array[non_white_mask, 1]  # G
+    rgba[non_white_mask, 2] = image_array[non_white_mask, 2]  # R
+    rgba[non_white_mask, 3] = 255
+    rgba[white_mask, 3] = 0
     
     return rgba
 
