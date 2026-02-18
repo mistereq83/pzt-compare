@@ -432,6 +432,9 @@ function switchView(btn, id) {
   btn.classList.add('active');
   document.getElementById('v-' + id).classList.add('active');
   closeAllPopups();
+  // Auto-fit the newly visible container
+  if (id === 'layers') autoFit('layersBox');
+  if (id === 'markers') autoFit('plan-markers');
 }
 
 // === Layer toggles ===
