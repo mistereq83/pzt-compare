@@ -28,3 +28,4 @@ uploads/
 
 # Logs
 *.log__pycache__/
+comparisons/
