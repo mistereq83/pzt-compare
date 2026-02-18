@@ -139,12 +139,13 @@
     position:absolute;width:28px;height:28px;border-radius:50%;
     color:#fff;font-size:12px;font-weight:700;
     display:flex;align-items:center;justify-content:center;
-    transform:translate(-50%,-50%);cursor:pointer;
+    cursor:pointer;
     border:2.5px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.5);
-    transition:all .2s ease;z-index:10;
+    transition:box-shadow .2s ease;z-index:10;
+    /* counter-scale is set dynamically via JS to keep markers constant size */
   }
-  .marker:hover{transform:translate(-50%,-50%) scale(1.25);}
-  .marker.active{transform:translate(-50%,-50%) scale(1.35);box-shadow:0 0 20px rgba(79,140,255,.5);z-index:15;}
+  .marker:hover{box-shadow:0 0 15px rgba(0,61,108,.6);z-index:12;}
+  .marker.active{box-shadow:0 0 20px rgba(79,140,255,.5);z-index:15;}
   .marker.hidden{display:none !important;}
   
   /* Marker colors by severity (Ekolan brand) */
@@ -676,6 +677,9 @@ function renderMarkers() {
   updateSeverityCounts();
   updateMarkerVisibility();
   updateChangesTable();
+  // Apply counter-scale to newly created markers
+  updateMarkerScales('layersBox');
+  updateMarkerScales('plan-markers');
 }
 
 function createMarkerElement(markerData, index, popupId) {
@@ -957,6 +961,17 @@ function applyTransform(containerId, animate) {
     setTimeout(() => viewport.style.transition = 'none', 260);
   }
   viewport.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
+  // Counter-scale markers so they stay constant size
+  updateMarkerScales(containerId);
+}
+
+function updateMarkerScales(containerId) {
+  const state = zoomStates[containerId];
+  const viewport = document.getElementById(getViewportId(containerId));
+  const counterScale = 1 / state.scale;
+  viewport.querySelectorAll('.marker').forEach(m => {
+    m.style.transform = `translate(-50%, -50%) scale(${counterScale})`;
+  });
 }
 
 function showZoomInfo(containerId) {
