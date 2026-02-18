@@ -18,6 +18,10 @@
   .back-btn:hover{color:var(--text);}
   header h1{font-size:1.15rem;font-weight:700;}
   header span{color:var(--muted);font-size:.8rem;}
+  
+  .roi-info-header{display:flex;align-items:center;gap:.5rem;margin-top:.5rem;flex-basis:100%;}
+  .roi-badge{background:rgba(79,140,255,.15);color:var(--accent);padding:.25rem .5rem;border-radius:4px;font-size:.7rem;font-weight:600;}
+  .roi-text{color:var(--muted);font-size:.8rem;}
 
   /* View switcher */
   .view-switch{display:flex;gap:.35rem;padding:.75rem 1.5rem;flex-wrap:wrap;}
@@ -137,6 +141,12 @@
   <a href="/" class="back-btn">← Lista porównań</a>
   <h1>{{ comparison.name }}</h1>
   <span>{{ comparison.description }}</span>
+  {% if comparison.roi %}
+  <div class="roi-info-header">
+    <span class="roi-badge">🔲 ROI</span>
+    <span class="roi-text">Analizowany fragment: {{ "%.0f"|format(comparison.roi.width * 100) }}% × {{ "%.0f"|format(comparison.roi.height * 100) }}% rysunku</span>
+  </div>
+  {% endif %}
 </header>
 
 <div class="view-switch">

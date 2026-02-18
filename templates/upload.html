@@ -52,6 +52,20 @@
   .form-group input { width:100%; padding:.6rem; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); }
   .form-group input:focus { outline:none; border-color:var(--accent); }
 
+  /* ROI Step */
+  .roi-info { padding:1rem; background:rgba(79,140,255,.1); margin-bottom:1rem; border-radius:8px; font-size:.85rem; }
+  
+  .roi-container { margin-bottom:1.5rem; }
+  .roi-panel { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; max-width:800px; margin:0 auto; }
+  .panel-content { position:relative; }
+  .roi-image { width:100%; display:block; }
+  .roi-overlay { 
+    position:absolute; top:0; left:0; width:100%; height:100%; 
+    cursor:crosshair; z-index:10;
+  }
+  
+  .roi-status { text-align:center; font-size:.85rem; color:var(--muted); margin-bottom:1rem; }
+
   /* Calibration Step */
   .calibration-container { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem; }
   .calibration-panel { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
@@ -184,7 +198,33 @@
   </div>
 </div>
 
-<!-- Step 2: Calibration -->
+<!-- Step 2: ROI Selection -->
+<div class="step" id="step-roi">
+  <h2>🔲 Zaznacz obszar do porównania (opcjonalne)</h2>
+  
+  <div class="roi-info">
+    <strong>Instrukcja:</strong> Narysuj prostokąt na rysunku, aby porównać tylko wybrany fragment. Możesz przesuwać i zmieniać rozmiar prostokąta. Kliknij "Cały rysunek" aby pominąć to i porównać całość.
+  </div>
+  
+  <div class="roi-container">
+    <div class="roi-panel">
+      <div class="panel-header" id="roi-v1-title">Wersja 1 - zaznacz obszar</div>
+      <div class="panel-content" id="roi-canvas-container">
+        <img id="roi-img" class="roi-image">
+        <canvas id="roi-canvas" class="roi-overlay"></canvas>
+      </div>
+    </div>
+  </div>
+  
+  <div class="roi-status" id="roi-status">Narysuj prostokąt przeciągając myszką po obrazie</div>
+  
+  <div class="btn-group">
+    <button class="btn btn-secondary" onclick="skipROI()">Cały rysunek</button>
+    <button class="btn btn-primary" id="roi-btn" disabled onclick="confirmROI()">Następny krok</button>
+  </div>
+</div>
+
+<!-- Step 3: Calibration -->
 <div class="step" id="step-calibration">
   <h2>🎯 Kalibracja - kliknij te same punkty na obu rysunkach</h2>
   
@@ -222,7 +262,7 @@
   </div>
 </div>
 
-<!-- Step 3: Processing -->
+<!-- Step 4: Processing -->
 <div class="step" id="step-processing">
   <h2>⚙️ Generowanie porównania...</h2>
   <div style="text-align:center;padding:2rem;">
@@ -239,6 +279,7 @@ let sessionId = null;
 let calibrationPoints1 = [];
 let calibrationPoints2 = [];
 let currentPointId = 0;
+let roiData = null; // {x, y, width, height} as percentages 0-1
 
 // File upload handling
 document.getElementById('file1').addEventListener('change', function(e) {
@@ -335,11 +376,11 @@ async function uploadFiles() {
     document.getElementById('v1-title').textContent = document.getElementById('v1-name').value || 'Wersja 1';
     document.getElementById('v2-title').textContent = document.getElementById('v2-name').value || 'Wersja 2';
     
-    // Setup calibration
-    setupCalibration();
+    // Setup ROI selection
+    setupROI();
     
-    // Switch to calibration step
-    showStep('step-calibration');
+    // Switch to ROI step
+    showStep('step-roi');
     
   } catch (error) {
     alert('Błąd: ' + error.message);
@@ -548,7 +589,8 @@ async function processCalibration() {
       name: document.getElementById('comp-name').value,
       description: document.getElementById('comp-desc').value,
       v1_name: document.getElementById('v1-name').value || 'Wersja 1',
-      v2_name: document.getElementById('v2-name').value || 'Wersja 2'
+      v2_name: document.getElementById('v2-name').value || 'Wersja 2',
+      roi: roiData  // ROI data {x, y, width, height} in 0-1 range or null
     };
     
     const response = await fetch('/calibrate', {
@@ -574,6 +616,291 @@ async function processCalibration() {
 function showStep(stepId) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
   document.getElementById(stepId).classList.add('active');
+}
+
+// === ROI SELECTION ===
+let roiCanvas, roiCtx, roiImg;
+let isDrawing = false;
+let roiRect = null;
+let dragHandle = null;
+
+function setupROI() {
+  roiCanvas = document.getElementById('roi-canvas');
+  roiCtx = roiCanvas.getContext('2d');
+  roiImg = document.getElementById('roi-img');
+  
+  // Load first image for ROI selection
+  roiImg.src = document.getElementById('cal-img1').src;
+  
+  // Update title
+  document.getElementById('roi-v1-title').textContent = document.getElementById('v1-name').value || 'Wersja 1 - zaznacz obszar';
+  
+  roiImg.onload = function() {
+    // Set canvas dimensions to match image
+    const rect = roiImg.getBoundingClientRect();
+    roiCanvas.width = roiImg.naturalWidth;
+    roiCanvas.height = roiImg.naturalHeight;
+    roiCanvas.style.width = rect.width + 'px';
+    roiCanvas.style.height = rect.height + 'px';
+    
+    setupROIHandlers();
+    drawROI();
+  };
+}
+
+function setupROIHandlers() {
+  roiCanvas.addEventListener('mousedown', startROIDraw);
+  roiCanvas.addEventListener('mousemove', continueROIDraw);
+  roiCanvas.addEventListener('mouseup', endROIDraw);
+  roiCanvas.addEventListener('touchstart', handleROITouch);
+  roiCanvas.addEventListener('touchmove', handleROITouch);
+  roiCanvas.addEventListener('touchend', handleROITouch);
+}
+
+function getROICoords(e) {
+  const rect = roiCanvas.getBoundingClientRect();
+  const scaleX = roiCanvas.width / rect.width;
+  const scaleY = roiCanvas.height / rect.height;
+  
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
+  };
+}
+
+function startROIDraw(e) {
+  const coords = getROICoords(e);
+  
+  // Check if clicking on existing rect handles
+  if (roiRect) {
+    dragHandle = getClickedHandle(coords.x, coords.y);
+    if (dragHandle) {
+      isDrawing = true;
+      return;
+    }
+  }
+  
+  // Start new rectangle
+  isDrawing = true;
+  roiRect = {
+    startX: coords.x,
+    startY: coords.y,
+    x: coords.x,
+    y: coords.y,
+    width: 0,
+    height: 0
+  };
+  
+  dragHandle = 'new';
+}
+
+function continueROIDraw(e) {
+  if (!isDrawing) return;
+  
+  const coords = getROICoords(e);
+  
+  if (dragHandle === 'new') {
+    // Drawing new rectangle
+    roiRect.width = coords.x - roiRect.startX;
+    roiRect.height = coords.y - roiRect.startY;
+    
+    // Update x,y to be top-left corner
+    roiRect.x = Math.min(roiRect.startX, coords.x);
+    roiRect.y = Math.min(roiRect.startY, coords.y);
+    roiRect.width = Math.abs(roiRect.width);
+    roiRect.height = Math.abs(roiRect.height);
+  } else if (dragHandle === 'move') {
+    // Moving rectangle
+    roiRect.x = coords.x - roiRect.offsetX;
+    roiRect.y = coords.y - roiRect.offsetY;
+  } else if (dragHandle) {
+    // Resizing rectangle
+    resizeROI(coords, dragHandle);
+  }
+  
+  drawROI();
+  updateROIStatus();
+}
+
+function endROIDraw(e) {
+  isDrawing = false;
+  dragHandle = null;
+  
+  if (roiRect && roiRect.width < 10 && roiRect.height < 10) {
+    // Too small, remove
+    roiRect = null;
+  }
+  
+  drawROI();
+  updateROIStatus();
+}
+
+function getClickedHandle(x, y) {
+  if (!roiRect) return null;
+  
+  const handles = getROIHandles();
+  const threshold = 15;
+  
+  for (let handle of handles) {
+    if (Math.abs(x - handle.x) <= threshold && Math.abs(y - handle.y) <= threshold) {
+      if (handle.type === 'move') {
+        roiRect.offsetX = x - roiRect.x;
+        roiRect.offsetY = y - roiRect.y;
+      }
+      return handle.type;
+    }
+  }
+  
+  return null;
+}
+
+function getROIHandles() {
+  if (!roiRect) return [];
+  
+  return [
+    { type: 'nw', x: roiRect.x, y: roiRect.y },
+    { type: 'ne', x: roiRect.x + roiRect.width, y: roiRect.y },
+    { type: 'sw', x: roiRect.x, y: roiRect.y + roiRect.height },
+    { type: 'se', x: roiRect.x + roiRect.width, y: roiRect.y + roiRect.height },
+    { type: 'move', x: roiRect.x + roiRect.width/2, y: roiRect.y + roiRect.height/2 }
+  ];
+}
+
+function resizeROI(coords, handle) {
+  const { x, y } = coords;
+  
+  switch (handle) {
+    case 'nw':
+      roiRect.width += roiRect.x - x;
+      roiRect.height += roiRect.y - y;
+      roiRect.x = x;
+      roiRect.y = y;
+      break;
+    case 'ne':
+      roiRect.width = x - roiRect.x;
+      roiRect.height += roiRect.y - y;
+      roiRect.y = y;
+      break;
+    case 'sw':
+      roiRect.width += roiRect.x - x;
+      roiRect.height = y - roiRect.y;
+      roiRect.x = x;
+      break;
+    case 'se':
+      roiRect.width = x - roiRect.x;
+      roiRect.height = y - roiRect.y;
+      break;
+  }
+  
+  // Ensure positive dimensions
+  if (roiRect.width < 0) {
+    roiRect.x += roiRect.width;
+    roiRect.width = -roiRect.width;
+  }
+  if (roiRect.height < 0) {
+    roiRect.y += roiRect.height;
+    roiRect.height = -roiRect.height;
+  }
+}
+
+function drawROI() {
+  roiCtx.clearRect(0, 0, roiCanvas.width, roiCanvas.height);
+  
+  if (!roiRect) return;
+  
+  // Semi-transparent overlay outside ROI
+  roiCtx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+  roiCtx.fillRect(0, 0, roiCanvas.width, roiCanvas.height);
+  
+  // Clear ROI area
+  roiCtx.globalCompositeOperation = 'destination-out';
+  roiCtx.fillRect(roiRect.x, roiRect.y, roiRect.width, roiRect.height);
+  
+  // Draw ROI border
+  roiCtx.globalCompositeOperation = 'source-over';
+  roiCtx.strokeStyle = '#4f8cff';
+  roiCtx.lineWidth = 3;
+  roiCtx.strokeRect(roiRect.x, roiRect.y, roiRect.width, roiRect.height);
+  
+  // Draw handles
+  const handles = getROIHandles();
+  roiCtx.fillStyle = '#4f8cff';
+  
+  for (let handle of handles) {
+    if (handle.type === 'move') {
+      // Move handle - larger circle
+      roiCtx.beginPath();
+      roiCtx.arc(handle.x, handle.y, 8, 0, 2 * Math.PI);
+      roiCtx.fill();
+      roiCtx.strokeStyle = '#fff';
+      roiCtx.lineWidth = 2;
+      roiCtx.stroke();
+    } else {
+      // Resize handles - small squares
+      roiCtx.fillRect(handle.x - 6, handle.y - 6, 12, 12);
+      roiCtx.strokeStyle = '#fff';
+      roiCtx.lineWidth = 1;
+      roiCtx.strokeRect(handle.x - 6, handle.y - 6, 12, 12);
+    }
+  }
+}
+
+function updateROIStatus() {
+  const statusEl = document.getElementById('roi-status');
+  const roiBtn = document.getElementById('roi-btn');
+  
+  if (roiRect && roiRect.width > 10 && roiRect.height > 10) {
+    const widthPercent = Math.round((roiRect.width / roiCanvas.width) * 100);
+    const heightPercent = Math.round((roiRect.height / roiCanvas.height) * 100);
+    statusEl.textContent = `Zaznaczono obszar: ${widthPercent}% × ${heightPercent}% rysunku`;
+    roiBtn.disabled = false;
+  } else {
+    statusEl.textContent = 'Narysuj prostokąt przeciągając myszką po obrazie';
+    roiBtn.disabled = true;
+  }
+}
+
+function handleROITouch(e) {
+  e.preventDefault();
+  
+  if (e.touches.length > 0) {
+    const touch = e.touches[0];
+    const mouseEvent = new MouseEvent(e.type.replace('touch', 'mouse'), {
+      clientX: touch.clientX,
+      clientY: touch.clientY
+    });
+    
+    roiCanvas.dispatchEvent(mouseEvent);
+  }
+}
+
+function skipROI() {
+  roiData = null;
+  proceedToCalibration();
+}
+
+function confirmROI() {
+  if (roiRect && roiRect.width > 10 && roiRect.height > 10) {
+    // Convert to normalized coordinates (0-1)
+    roiData = {
+      x: roiRect.x / roiCanvas.width,
+      y: roiRect.y / roiCanvas.height,
+      width: roiRect.width / roiCanvas.width,
+      height: roiRect.height / roiCanvas.height
+    };
+  } else {
+    roiData = null;
+  }
+  
+  proceedToCalibration();
+}
+
+function proceedToCalibration() {
+  // Setup calibration
+  setupCalibration();
+  
+  // Switch to calibration step
+  showStep('step-calibration');
 }
 
 // Drag and drop support

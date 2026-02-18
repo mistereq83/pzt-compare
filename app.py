@@ -220,7 +220,36 @@ def create_diff_layer(img1_array, img2_array):
     
     return rgba
 
-def generate_layers(comp_id, img1_path, img2_path, transformation_matrix=None):
+def apply_roi_crop(image_array, roi_data):
+    """Apply ROI crop to image array
+    roi_data: {x, y, width, height} in normalized coordinates 0-1
+    """
+    try:
+        h, w = image_array.shape[:2]
+        
+        # Convert normalized coordinates to pixel coordinates
+        x = int(roi_data['x'] * w)
+        y = int(roi_data['y'] * h)
+        crop_width = int(roi_data['width'] * w)
+        crop_height = int(roi_data['height'] * h)
+        
+        # Ensure coordinates are within image bounds
+        x = max(0, min(x, w))
+        y = max(0, min(y, h))
+        x2 = min(x + crop_width, w)
+        y2 = min(y + crop_height, h)
+        
+        # Perform crop
+        cropped = image_array[y:y2, x:x2]
+        
+        print(f"ROI crop: from {w}×{h} to {cropped.shape[1]}×{cropped.shape[0]}")
+        return cropped
+        
+    except Exception as e:
+        print(f"ROI crop error: {e}")
+        return None
+
+def generate_layers(comp_id, img1_path, img2_path, transformation_matrix=None, roi_data=None):
     """Generate all comparison layers"""
     comp_dir = Path(app.config['COMPARISONS_FOLDER']) / comp_id
     
@@ -230,6 +259,15 @@ def generate_layers(comp_id, img1_path, img2_path, transformation_matrix=None):
     
     if img1 is None or img2 is None:
         return False
+    
+    # Apply ROI cropping if specified (BEFORE transformation)
+    if roi_data is not None:
+        print(f"Applying ROI crop: {roi_data}")
+        img1 = apply_roi_crop(img1, roi_data)
+        img2 = apply_roi_crop(img2, roi_data)
+        if img1 is None or img2 is None:
+            print("ROI crop failed")
+            return False
     
     # Apply transformation if provided
     if transformation_matrix is not None:
@@ -655,6 +693,7 @@ def calibrate():
         description = data.get('description', '')
         v1_name = data.get('v1_name', 'Version 1')
         v2_name = data.get('v2_name', 'Version 2')
+        roi_data = data.get('roi')  # ROI data {x, y, width, height} in 0-1 range or None
         
         if not session_id or len(points1) < 3 or len(points2) < 3:
             return jsonify({'error': 'Insufficient calibration points'}), 400
@@ -689,7 +728,7 @@ def calibrate():
         shutil.copy(session_dir / 'v2.png', orig2_path)
         
         # Generate layers
-        success = generate_layers(comp_id, str(orig1_path), str(orig2_path), transformation)
+        success = generate_layers(comp_id, str(orig1_path), str(orig2_path), transformation, roi_data)
         if not success:
             return jsonify({'error': 'Layer generation failed'}), 500
         
@@ -706,6 +745,7 @@ def calibrate():
             'v2_name': v2_name,
             'original_v1': 'original_v1.png',
             'original_v2': 'original_v2.png',
+            'roi': roi_data,  # Store ROI data
             'layers': {
                 'v1_blue': 'layer_v1_blue.png',
                 'v2_red': 'layer_v2_red.png',
