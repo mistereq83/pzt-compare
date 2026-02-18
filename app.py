@@ -23,33 +23,80 @@ import time
 
 app = Flask(__name__)
 
-# --- HTTP Basic Auth ---
-AUTH_USER = os.environ.get('PZT_USER', 'molab')
-AUTH_PASS = os.environ.get('PZT_PASS', 'pzt2026!')
-
-def check_auth(username, password):
-    return username == AUTH_USER and password == AUTH_PASS
-
-def authenticate():
-    return Response('Wymagane logowanie.', 401, {'WWW-Authenticate': 'Basic realm="PZT Compare"'})
+# --- Password-only Auth (cookie-based) ---
+APP_PASSWORD = os.environ.get('PZT_PASS', 'PI2026!')
+app.secret_key = os.environ.get('SECRET_KEY', 'pzt-compare-secret-key-2026')
 
 def requires_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not check_auth(auth.username, auth.password):
-            return authenticate()
+        from flask import session as flask_session
+        if not flask_session.get('authenticated'):
+            return redirect(url_for('login_page', next=request.path))
         return f(*args, **kwargs)
     return decorated
 
 @app.before_request
 def before_request_auth():
-    # Skip auth for health check
-    if request.path == '/health':
+    from flask import session as flask_session
+    # Skip auth for health check and login page
+    if request.path in ('/health', '/login') or request.path.startswith('/static'):
         return
-    auth = request.authorization
-    if not auth or not check_auth(auth.username, auth.password):
-        return authenticate()
+    if not flask_session.get('authenticated'):
+        return redirect(url_for('login_page', next=request.path))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login_page():
+    from flask import session as flask_session
+    error = None
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if password == APP_PASSWORD:
+            flask_session['authenticated'] = True
+            next_url = request.args.get('next', '/')
+            return redirect(next_url)
+        else:
+            error = 'Nieprawidłowe hasło'
+    
+    return f'''<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PZT Compare — Logowanie</title>
+<style>
+  :root {{ --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a; --accent:#4f8cff; --text:#e2e4ea; --muted:#8b8fa3; --red:#ff6b4f; }}
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ font-family:'Inter',-apple-system,sans-serif; background:var(--bg); color:var(--text);
+         display:flex; align-items:center; justify-content:center; min-height:100vh; }}
+  .login-box {{ background:var(--card); border:1px solid var(--border); border-radius:16px;
+               padding:2.5rem; width:100%; max-width:380px; text-align:center; }}
+  .login-box h1 {{ font-size:1.4rem; margin-bottom:.3rem; }}
+  .login-box p {{ color:var(--muted); font-size:.85rem; margin-bottom:1.5rem; }}
+  .login-box input {{
+    width:100%; padding:.8rem 1rem; border:1px solid var(--border); border-radius:8px;
+    background:var(--bg); color:var(--text); font-size:1rem; text-align:center;
+    letter-spacing:2px; margin-bottom:1rem;
+  }}
+  .login-box input:focus {{ outline:none; border-color:var(--accent); }}
+  .login-box button {{
+    width:100%; padding:.8rem; border:none; border-radius:8px; background:var(--accent);
+    color:#fff; font-size:.95rem; font-weight:600; cursor:pointer; transition:all .15s;
+  }}
+  .login-box button:hover {{ background:#3d7ae6; }}
+  .error {{ color:var(--red); font-size:.85rem; margin-bottom:1rem; }}
+</style>
+</head>
+<body>
+<form class="login-box" method="POST">
+  <h1>🔒 PZT Compare</h1>
+  <p>Porównywanie planów zagospodarowania terenu</p>
+  {"<div class='error'>" + error + "</div>" if error else ""}
+  <input type="password" name="password" placeholder="Hasło" autofocus>
+  <button type="submit">Wejdź</button>
+</form>
+</body>
+</html>'''
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['COMPARISONS_FOLDER'] = 'comparisons'
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max
