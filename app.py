@@ -751,7 +751,15 @@ def calibrate():
             return jsonify({'error': 'Layer generation failed'}), 500
         
         # AI Analysis - automatically find and describe differences
-        ai_markers = analyze_differences(comp_id, str(orig1_path), str(orig2_path))
+        import sys, traceback as tb
+        print(f"[DEBUG] Starting analyze_differences for {comp_id}", file=sys.stderr, flush=True)
+        try:
+            ai_markers = analyze_differences(comp_id, str(orig1_path), str(orig2_path))
+            print(f"[DEBUG] analyze_differences returned {len(ai_markers)} markers", file=sys.stderr, flush=True)
+        except Exception as analyze_err:
+            print(f"[DEBUG] analyze_differences CRASHED: {analyze_err}", file=sys.stderr, flush=True)
+            tb.print_exc(file=sys.stderr)
+            ai_markers = []
         
         # Save metadata
         meta_data = {
@@ -858,6 +866,62 @@ def serve_comparisons(filename):
 @app.route('/health')
 def health():
     return 'ok'
+
+@app.route('/debug/reanalyze/<comp_id>')
+@require_auth
+def debug_reanalyze(comp_id):
+    """Debug: re-run analyze_differences on existing comparison"""
+    import sys, traceback as tb
+    meta = load_comparison_meta(comp_id)
+    if not meta:
+        return jsonify({'error': 'Not found'}), 404
+    
+    comp_dir = Path(app.config['COMPARISONS_FOLDER']) / comp_id
+    orig1 = comp_dir / 'original_v1.png'
+    orig2 = comp_dir / 'original_v2.png'
+    diff_path = comp_dir / 'layer_diff.png'
+    
+    debug_info = {
+        'comp_id': comp_id,
+        'orig1_exists': orig1.exists(),
+        'orig2_exists': orig2.exists(),
+        'diff_exists': diff_path.exists(),
+        'openai_key_set': bool(os.environ.get('OPENAI_API_KEY')),
+    }
+    
+    if diff_path.exists():
+        import cv2
+        diff_img = cv2.imread(str(diff_path), cv2.IMREAD_UNCHANGED)
+        if diff_img is not None:
+            debug_info['diff_shape'] = list(diff_img.shape)
+            debug_info['diff_channels'] = diff_img.shape[2] if len(diff_img.shape) == 3 else 1
+            
+            # Check alpha
+            if len(diff_img.shape) == 3 and diff_img.shape[2] == 4:
+                alpha = diff_img[:,:,3]
+            else:
+                alpha = cv2.cvtColor(diff_img, cv2.COLOR_BGR2GRAY) if len(diff_img.shape) == 3 else diff_img
+            
+            nonzero = int(cv2.countNonZero(alpha))
+            total = alpha.shape[0] * alpha.shape[1]
+            debug_info['nonzero_pixels'] = nonzero
+            debug_info['total_pixels'] = total
+            debug_info['diff_percent'] = round(nonzero / total * 100, 1)
+            
+            contours, _ = cv2.findContours(alpha, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            debug_info['total_contours'] = len(contours)
+            significant = [c for c in contours if cv2.contourArea(c) >= 500]
+            debug_info['significant_contours'] = len(significant)
+    
+    try:
+        markers = analyze_differences(comp_id, str(orig1), str(orig2))
+        debug_info['markers_count'] = len(markers)
+        debug_info['markers'] = markers
+    except Exception as e:
+        debug_info['error'] = str(e)
+        debug_info['traceback'] = tb.format_exc()
+    
+    return jsonify(debug_info)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8899))
