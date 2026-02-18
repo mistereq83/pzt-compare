@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PZT Compare v2</title>
+<style>
+  :root {
+    --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a;
+    --accent:#4f8cff; --red:#ff6b4f; --green:#34d399;
+    --yellow:#fbbf24; --text:#e2e4ea; --muted:#8b8fa3;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',-apple-system,sans-serif; background:var(--bg); color:var(--text); }
+
+  header { padding:1.5rem; border-bottom:1px solid var(--border); }
+  header h1 { font-size:1.8rem; font-weight:700; margin-bottom:.5rem; }
+  header p { color:var(--muted); font-size:.9rem; }
+
+  .toolbar { padding:1rem 1.5rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; }
+  .btn { 
+    padding:.7rem 1.2rem; border-radius:8px; border:none; font-weight:600; cursor:pointer; transition:all .15s; text-decoration:none; display:inline-block; font-size:.85rem;
+  }
+  .btn-primary { background:var(--accent); color:#fff; }
+  .btn-primary:hover { background:#3d7ae6; }
+  .btn-danger { background:var(--red); color:#fff; }
+  .btn-danger:hover { background:#e85d47; }
+
+  .comparisons-grid { padding:0 1.5rem 2rem; display:grid; grid-template-columns:repeat(auto-fill, minmax(340px, 1fr)); gap:1rem; }
+  .comparison-card { 
+    background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; transition:all .2s;
+  }
+  .comparison-card:hover { border-color:var(--accent); transform:translateY(-2px); }
+
+  .card-preview { aspect-ratio:4/3; overflow:hidden; background:#fff; position:relative; }
+  .card-preview img { width:100%; height:100%; object-fit:contain; }
+  .card-preview:empty::after { 
+    content:'📋'; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); 
+    font-size:3rem; opacity:.3;
+  }
+
+  .card-content { padding:1rem 1.25rem; }
+  .card-title { font-weight:700; font-size:.95rem; margin-bottom:.3rem; }
+  .card-desc { color:var(--muted); font-size:.8rem; margin-bottom:.8rem; line-height:1.4; }
+  .card-date { color:var(--muted); font-size:.7rem; margin-bottom:1rem; }
+
+  .card-actions { display:flex; gap:.5rem; }
+  .btn-sm { padding:.45rem .8rem; font-size:.75rem; }
+
+  .empty-state { 
+    text-align:center; padding:3rem 1.5rem; color:var(--muted);
+  }
+  .empty-state h2 { font-size:1.2rem; margin-bottom:.5rem; }
+
+  @media(max-width:768px) {
+    .comparisons-grid { grid-template-columns:1fr; }
+    .toolbar { flex-direction:column; align-items:stretch; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏗️ PZT Compare v2</h1>
+  <p>Porównywarka rysunków budowlanych z kalibracją półautomatyczną</p>
+</header>
+
+<div class="toolbar">
+  <div>
+    <strong>{{ comparisons|length }}</strong> porównań
+  </div>
+  <a href="/new" class="btn btn-primary">➕ Nowe porównanie</a>
+</div>
+
+{% if comparisons %}
+<div class="comparisons-grid">
+  {% for comp in comparisons %}
+  <div class="comparison-card">
+    <div class="card-preview">
+      {% if comp.preview_v2 %}
+      <img src="/{{ comp.preview_v2 }}" alt="Podgląd">
+      {% endif %}
+    </div>
+    <div class="card-content">
+      <div class="card-title">{{ comp.name }}</div>
+      <div class="card-desc">{{ comp.description }}</div>
+      <div class="card-date">{{ comp.created_date[:10] if comp.created_date else 'Brak daty' }}</div>
+      <div class="card-actions">
+        <a href="/compare/{{ comp.id }}" class="btn btn-primary btn-sm">👁 Otwórz</a>
+        <button class="btn btn-danger btn-sm" onclick="deleteComparison('{{ comp.id }}', '{{ comp.name }}')">🗑 Usuń</button>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <h2>Brak porównań</h2>
+  <p>Rozpocznij od przesłania dwóch rysunków do porównania.</p>
+  <br>
+  <a href="/new" class="btn btn-primary">Rozpocznij</a>
+</div>
+{% endif %}
+
+<script>
+function deleteComparison(compId, name) {
+  if (!confirm(`Czy na pewno usunąć porównanie "${name}"?\n\nTej operacji nie można cofnąć.`)) {
+    return;
+  }
+  
+  fetch(`/api/delete/${compId}`, { method: 'DELETE' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        location.reload();
+      } else {
+        alert('Błąd podczas usuwania: ' + (data.error || 'Nieznany błąd'));
+      }
+    })
+    .catch(e => {
+      alert('Błąd: ' + e.message);
+    });
+}
+</script>
+
+</body>
+</html>

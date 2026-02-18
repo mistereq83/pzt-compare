@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nowe porównanie - PZT Compare v2</title>
+<style>
+  :root {
+    --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a;
+    --accent:#4f8cff; --red:#ff6b4f; --green:#34d399;
+    --yellow:#fbbf24; --text:#e2e4ea; --muted:#8b8fa3;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',-apple-system,sans-serif; background:var(--bg); color:var(--text); }
+
+  header { padding:1rem 1.5rem; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:1rem; }
+  header h1 { font-size:1.2rem; font-weight:700; }
+  .back-btn { color:var(--muted); text-decoration:none; font-size:.9rem; }
+  .back-btn:hover { color:var(--text); }
+
+  .step { padding:1.5rem; display:none; }
+  .step.active { display:block; }
+  .step h2 { font-size:1.1rem; font-weight:700; margin-bottom:1rem; }
+
+  /* Upload Step */
+  .upload-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem; }
+  .upload-box { 
+    border:2px dashed var(--border); border-radius:12px; padding:2rem; text-align:center; 
+    background:var(--card); cursor:pointer; transition:all .2s; position:relative;
+  }
+  .upload-box:hover { border-color:var(--accent); }
+  .upload-box.dragover { border-color:var(--green); background:rgba(52,211,153,.05); }
+  .upload-box input[type=file] { position:absolute; opacity:0; width:100%; height:100%; cursor:pointer; }
+  .upload-icon { font-size:2rem; margin-bottom:.5rem; }
+  .upload-preview { max-width:100%; max-height:200px; border-radius:8px; margin-top:1rem; }
+
+  .form-row { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem; }
+  .form-group { margin-bottom:1rem; }
+  .form-group label { display:block; font-weight:600; margin-bottom:.3rem; font-size:.85rem; }
+  .form-group input { width:100%; padding:.6rem; border:1px solid var(--border); border-radius:6px; background:var(--card); color:var(--text); }
+  .form-group input:focus { outline:none; border-color:var(--accent); }
+
+  /* Calibration Step */
+  .calibration-container { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem; }
+  .calibration-panel { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .panel-header { padding:.8rem 1rem; background:rgba(0,0,0,.2); font-weight:600; font-size:.85rem; }
+  .panel-content { position:relative; }
+  .calibration-image { width:100%; display:block; cursor:crosshair; }
+
+  .calibration-point {
+    position:absolute; width:24px; height:24px; border-radius:50%; 
+    background:var(--accent); color:#fff; font-size:11px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; 
+    transform:translate(-50%, -50%); cursor:pointer; z-index:10;
+    border:2px solid #fff; box-shadow:0 2px 8px rgba(0,0,0,.3);
+    transition:all .15s;
+  }
+  .calibration-point:hover { transform:translate(-50%, -50%) scale(1.2); }
+  .calibration-point.active { background:var(--green); }
+
+  .calibration-info { padding:1rem; background:rgba(79,140,255,.1); margin-bottom:1rem; border-radius:8px; font-size:.85rem; }
+
+  .progress-bar { 
+    width:100%; height:6px; background:var(--border); border-radius:3px; overflow:hidden; margin-bottom:1rem;
+  }
+  .progress-fill { height:100%; background:var(--accent); transition:width .3s; }
+
+  .btn { 
+    padding:.7rem 1.2rem; border-radius:8px; border:none; font-weight:600; cursor:pointer; 
+    transition:all .15s; font-size:.85rem; text-decoration:none; display:inline-block;
+  }
+  .btn:disabled { opacity:.5; cursor:not-allowed; }
+  .btn-primary { background:var(--accent); color:#fff; }
+  .btn-primary:hover:not(:disabled) { background:#3d7ae6; }
+  .btn-secondary { background:var(--card); color:var(--text); border:1px solid var(--border); }
+  .btn-secondary:hover { background:var(--border); }
+
+  .btn-group { display:flex; gap:.5rem; justify-content:space-between; margin-top:1rem; }
+
+  @media(max-width:768px) {
+    .upload-grid, .calibration-container, .form-row { grid-template-columns:1fr; }
+    .btn-group { flex-direction:column; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/" class="back-btn">← Powrót</a>
+  <h1>Nowe porównanie</h1>
+</header>
+
+<!-- Step 1: Upload -->
+<div class="step active" id="step-upload">
+  <h2>📤 Prześlij rysunki</h2>
+  
+  <div class="upload-grid">
+    <div class="upload-box" onclick="document.getElementById('file1').click()">
+      <div class="upload-icon">📋</div>
+      <div>Wersja 1 (starszy rysunek)</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">PDF, PNG, JPG</div>
+      <input type="file" id="file1" accept=".pdf,.png,.jpg,.jpeg">
+      <img id="preview1" class="upload-preview" style="display:none">
+    </div>
+    
+    <div class="upload-box" onclick="document.getElementById('file2').click()">
+      <div class="upload-icon">📋</div>
+      <div>Wersja 2 (nowszy rysunek)</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">PDF, PNG, JPG</div>
+      <input type="file" id="file2" accept=".pdf,.png,.jpg,.jpeg">
+      <img id="preview2" class="upload-preview" style="display:none">
+    </div>
+  </div>
+  
+  <div class="form-group">
+    <label>Nazwa porównania</label>
+    <input type="text" id="comp-name" placeholder="np. PZT Szyprów 9 — marzec → kwiecień 2025">
+  </div>
+  
+  <div class="form-row">
+    <div class="form-group">
+      <label>Nazwa wersji 1</label>
+      <input type="text" id="v1-name" placeholder="np. Marzec 2025">
+    </div>
+    <div class="form-group">
+      <label>Nazwa wersji 2</label>
+      <input type="text" id="v2-name" placeholder="np. Kwiecień 2025">
+    </div>
+  </div>
+  
+  <div class="form-group">
+    <label>Opis (opcjonalny)</label>
+    <input type="text" id="comp-desc" placeholder="np. dz. 2130, obr. 0022">
+  </div>
+  
+  <div class="btn-group">
+    <a href="/" class="btn btn-secondary">Anuluj</a>
+    <button class="btn btn-primary" id="upload-btn" disabled onclick="uploadFiles()">Następny krok</button>
+  </div>
+</div>
+
+<!-- Step 2: Calibration -->
+<div class="step" id="step-calibration">
+  <h2>🎯 Kalibracja - kliknij te same punkty na obu rysunkach</h2>
+  
+  <div class="progress-bar">
+    <div class="progress-fill" id="progress" style="width:0%"></div>
+  </div>
+  
+  <div class="calibration-info">
+    <strong>Instrukcja:</strong> Kliknij minimum 3 te same punkty na obu rysunkach (narożniki, przecięcia linii). Im więcej punktów, tym lepsze dopasowanie. Kliknij ponownie na punkt, aby go usunąć.
+  </div>
+  
+  <div class="calibration-container">
+    <div class="calibration-panel">
+      <div class="panel-header" id="v1-title">Wersja 1</div>
+      <div class="panel-content">
+        <img id="cal-img1" class="calibration-image">
+      </div>
+    </div>
+    
+    <div class="calibration-panel">
+      <div class="panel-header" id="v2-title">Wersja 2</div>
+      <div class="panel-content">
+        <img id="cal-img2" class="calibration-image">
+      </div>
+    </div>
+  </div>
+  
+  <div style="font-size:.85rem;color:var(--muted);margin-bottom:1rem;">
+    Punkty: <span id="point-count">0</span> | Status: <span id="cal-status">Kliknij punkty na obu rysunkach</span>
+  </div>
+  
+  <div class="btn-group">
+    <button class="btn btn-secondary" onclick="resetCalibration()">Wyczyść punkty</button>
+    <button class="btn btn-primary" id="calibrate-btn" disabled onclick="processCalibration()">Generuj porównanie</button>
+  </div>
+</div>
+
+<!-- Step 3: Processing -->
+<div class="step" id="step-processing">
+  <h2>⚙️ Generowanie porównania...</h2>
+  <div style="text-align:center;padding:2rem;">
+    <div style="font-size:3rem;margin-bottom:1rem;">⏳</div>
+    <div>Obliczanie transformacji i generowanie warstw...</div>
+  </div>
+</div>
+
+<script>
+let sessionId = null;
+let calibrationPoints1 = [];
+let calibrationPoints2 = [];
+let currentPointId = 0;
+
+// File upload handling
+document.getElementById('file1').addEventListener('change', function(e) {
+  handleFileSelect(e.target.files[0], 'preview1');
+  checkUploadReady();
+});
+
+document.getElementById('file2').addEventListener('change', function(e) {
+  handleFileSelect(e.target.files[0], 'preview2');
+  checkUploadReady();
+});
+
+function handleFileSelect(file, previewId) {
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const preview = document.getElementById(previewId);
+    if (file.type.includes('pdf')) {
+      preview.style.display = 'none';
+    } else {
+      preview.src = e.target.result;
+      preview.style.display = 'block';
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function checkUploadReady() {
+  const file1 = document.getElementById('file1').files[0];
+  const file2 = document.getElementById('file2').files[0];
+  const name = document.getElementById('comp-name').value.trim();
+  
+  document.getElementById('upload-btn').disabled = !(file1 && file2 && name);
+}
+
+document.getElementById('comp-name').addEventListener('input', checkUploadReady);
+
+async function uploadFiles() {
+  const formData = new FormData();
+  formData.append('file1', document.getElementById('file1').files[0]);
+  formData.append('file2', document.getElementById('file2').files[0]);
+  
+  try {
+    const response = await fetch('/upload', {
+      method: 'POST',
+      body: formData
+    });
+    
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || 'Upload failed');
+    }
+    
+    sessionId = result.session_id;
+    
+    // Load calibration images
+    document.getElementById('cal-img1').src = result.preview1;
+    document.getElementById('cal-img2').src = result.preview2;
+    
+    // Update titles
+    document.getElementById('v1-title').textContent = document.getElementById('v1-name').value || 'Wersja 1';
+    document.getElementById('v2-title').textContent = document.getElementById('v2-name').value || 'Wersja 2';
+    
+    // Setup calibration
+    setupCalibration();
+    
+    // Switch to calibration step
+    showStep('step-calibration');
+    
+  } catch (error) {
+    alert('Błąd: ' + error.message);
+  }
+}
+
+function setupCalibration() {
+  const img1 = document.getElementById('cal-img1');
+  const img2 = document.getElementById('cal-img2');
+  
+  img1.onload = () => setupImageCalibration(img1, 1);
+  img2.onload = () => setupImageCalibration(img2, 2);
+  
+  if (img1.complete) setupImageCalibration(img1, 1);
+  if (img2.complete) setupImageCalibration(img2, 2);
+}
+
+function setupImageCalibration(img, version) {
+  img.addEventListener('click', function(e) {
+    const rect = img.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width * 100;
+    const y = (e.clientY - rect.top) / rect.height * 100;
+    
+    addCalibrationPoint(img.parentElement, x, y, version);
+  });
+}
+
+function addCalibrationPoint(container, x, y, version) {
+  // Check if there's already a point at this location (for removal)
+  const existingPoints = container.querySelectorAll('.calibration-point');
+  for (let point of existingPoints) {
+    const px = parseFloat(point.style.left);
+    const py = parseFloat(point.style.top);
+    if (Math.abs(px - x) < 2 && Math.abs(py - y) < 2) {
+      // Remove this point
+      const pointId = parseInt(point.dataset.id);
+      removeCalibrationPoint(pointId, version);
+      return;
+    }
+  }
+  
+  // Add new point
+  const pointDiv = document.createElement('div');
+  pointDiv.className = 'calibration-point';
+  pointDiv.style.left = x + '%';
+  pointDiv.style.top = y + '%';
+  pointDiv.dataset.id = currentPointId;
+  pointDiv.textContent = currentPointId + 1;
+  
+  container.appendChild(pointDiv);
+  
+  // Store point
+  const pointData = { id: currentPointId, x: x, y: y };
+  if (version === 1) {
+    calibrationPoints1.push(pointData);
+  } else {
+    calibrationPoints2.push(pointData);
+  }
+  
+  currentPointId++;
+  updateCalibrationStatus();
+}
+
+function removeCalibrationPoint(pointId, version) {
+  // Remove from arrays
+  if (version === 1) {
+    calibrationPoints1 = calibrationPoints1.filter(p => p.id !== pointId);
+  } else {
+    calibrationPoints2 = calibrationPoints2.filter(p => p.id !== pointId);
+  }
+  
+  // Remove from DOM
+  const points = document.querySelectorAll(`[data-id="${pointId}"]`);
+  points.forEach(p => p.remove());
+  
+  updateCalibrationStatus();
+}
+
+function updateCalibrationStatus() {
+  const minPoints = Math.min(calibrationPoints1.length, calibrationPoints2.length);
+  const totalPoints = calibrationPoints1.length + calibrationPoints2.length;
+  
+  document.getElementById('point-count').textContent = `${calibrationPoints1.length} + ${calibrationPoints2.length}`;
+  document.getElementById('progress').style.width = Math.min(minPoints / 3 * 100, 100) + '%';
+  
+  if (minPoints === 0) {
+    document.getElementById('cal-status').textContent = 'Kliknij punkty na obu rysunkach';
+  } else if (minPoints < 3) {
+    document.getElementById('cal-status').textContent = `Dodaj jeszcze ${3 - minPoints} punkty`;
+  } else {
+    document.getElementById('cal-status').textContent = `Gotowe! ${minPoints} punktów kalibracji`;
+  }
+  
+  document.getElementById('calibrate-btn').disabled = minPoints < 3;
+}
+
+function resetCalibration() {
+  calibrationPoints1 = [];
+  calibrationPoints2 = [];
+  currentPointId = 0;
+  
+  document.querySelectorAll('.calibration-point').forEach(p => p.remove());
+  updateCalibrationStatus();
+}
+
+async function processCalibration() {
+  showStep('step-processing');
+  
+  try {
+    // Prepare points arrays (normalize to image coordinates)
+    const points1 = calibrationPoints1.map(p => [p.x / 100, p.y / 100]);
+    const points2 = calibrationPoints2.map(p => [p.x / 100, p.y / 100]);
+    
+    const requestData = {
+      session_id: sessionId,
+      points1: points1,
+      points2: points2,
+      name: document.getElementById('comp-name').value,
+      description: document.getElementById('comp-desc').value,
+      v1_name: document.getElementById('v1-name').value || 'Wersja 1',
+      v2_name: document.getElementById('v2-name').value || 'Wersja 2'
+    };
+    
+    const response = await fetch('/calibrate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestData)
+    });
+    
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || 'Calibration failed');
+    }
+    
+    // Redirect to comparison view
+    window.location.href = `/compare/${result.comparison_id}`;
+    
+  } catch (error) {
+    alert('Błąd: ' + error.message);
+    showStep('step-calibration');
+  }
+}
+
+function showStep(stepId) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById(stepId).classList.add('active');
+}
+
+// Drag and drop support
+['file1', 'file2'].forEach(fileId => {
+  const input = document.getElementById(fileId);
+  const box = input.parentElement;
+  
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    box.addEventListener(eventName, preventDefaults, false);
+  });
+  
+  function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  
+  ['dragenter', 'dragover'].forEach(eventName => {
+    box.addEventListener(eventName, () => box.classList.add('dragover'), false);
+  });
+  
+  ['dragleave', 'drop'].forEach(eventName => {
+    box.addEventListener(eventName, () => box.classList.remove('dragover'), false);
+  });
+  
+  box.addEventListener('drop', function(e) {
+    const dt = e.dataTransfer;
+    const files = dt.files;
+    input.files = files;
+    input.dispatchEvent(new Event('change'));
+  });
+});
+</script>
+
+</body>
+</html>
