@@ -78,11 +78,11 @@
   .layers-container{
     position:relative;margin:1rem;border-radius:12px;overflow:hidden;
     background:#fff;border:1px solid var(--border);box-shadow:0 4px 12px rgba(0,61,108,0.1);
-    cursor:grab;
+    cursor:grab;max-height:55vh;
   }
   .layers-container.dragging{cursor:grabbing;}
   .layers-container .zoom-viewport{
-    position:relative;transform-origin:0 0;transition:transform 0.2s ease;
+    position:relative;transform-origin:0 0;will-change:transform;
   }
   .layers-container img{
     position:absolute;top:0;left:0;width:100%;height:100%;
@@ -127,11 +127,11 @@
   .plan-container{
     position:relative;margin:0 1rem 1rem;border-radius:12px;overflow:hidden;
     background:var(--card);border:1px solid var(--border);box-shadow:0 4px 12px rgba(0,61,108,0.1);
-    cursor:grab;
+    cursor:grab;max-height:55vh;
   }
   .plan-container.dragging{cursor:grabbing;}
   .plan-container .zoom-viewport{
-    position:relative;transform-origin:0 0;transition:transform 0.2s ease;
+    position:relative;transform-origin:0 0;will-change:transform;
   }
   .plan-container>img{width:100%;display:block;pointer-events:none;user-select:none;}
 
@@ -566,15 +566,25 @@ function showMarkerForm(popup, marker, editData = null) {
 }
 
 function positionPopup(popup, marker) {
-  const mr = marker.getBoundingClientRect();
-  const pr = marker.parentElement.getBoundingClientRect();
-  const pw = pr.width;
+  // Popup is a child of the container (not the viewport), so position in container coords
+  const container = popup.parentElement;
+  const containerRect = container.getBoundingClientRect();
+  const markerRect = marker.getBoundingClientRect();
+  
+  // Marker position relative to container
+  const mx = markerRect.left - containerRect.left + markerRect.width / 2;
+  const my = markerRect.top - containerRect.top + markerRect.height;
+  
+  const pw = containerRect.width;
+  const ph = containerRect.height;
 
-  let top = mr.top - pr.top + 36;
-  let left = mr.left - pr.left - 140;
+  let left = mx - 165; // center popup (330/2)
+  let top = my + 8;
+  
+  // Keep popup within container bounds
   if (left < 8) left = 8;
-  if (left + 330 > pw) left = pw - 338;
-  if (top + 260 > pr.height) top = mr.top - pr.top - 270;
+  if (left + 330 > pw - 8) left = pw - 338;
+  if (top + 280 > ph) top = markerRect.top - containerRect.top - 280;
   if (top < 8) top = 8;
 
   popup.style.top = top + 'px';
@@ -761,10 +771,23 @@ document.getElementById('plan-markers').addEventListener('click', function(e) {
   
   const viewport = document.getElementById('markers-viewport');
   const img = viewport.querySelector('img');
-  const imgRect = img.getBoundingClientRect();
+  const state = zoomStates['plan-markers'];
+  const containerRect = document.getElementById('plan-markers').getBoundingClientRect();
   
-  const x = (e.clientX - imgRect.left) / imgRect.width * 100;
-  const y = (e.clientY - imgRect.top) / imgRect.height * 100;
+  // Convert screen coords → world coords → percentage of image
+  const screenX = e.clientX - containerRect.left;
+  const screenY = e.clientY - containerRect.top;
+  const worldX = (screenX - state.tx) / state.scale;
+  const worldY = (screenY - state.ty) / state.scale;
+  
+  // Image natural layout size (before transform)
+  const imgW = img.offsetWidth;
+  const imgH = img.offsetHeight;
+  
+  const x = (worldX / imgW) * 100;
+  const y = (worldY / imgH) * 100;
+  
+  if (x < 0 || x > 100 || y < 0 || y > 100) return; // Outside image
   
   // Create temporary marker
   const tempMarker = document.createElement('div');
@@ -877,38 +900,67 @@ async function loadMarkers() {
 }
 
 // === ZOOM/PAN FUNCTIONALITY ===
+// Transform: translate(tx, ty) scale(s) — translate in SCREEN space, then scale
+// This means: screenX = worldX * scale + tx
 const zoomStates = {
-  'layersBox': { scale: 1, x: 0, y: 0, minScale: 0.1, maxScale: 5 },
-  'plan-markers': { scale: 1, x: 0, y: 0, minScale: 0.1, maxScale: 5 }
+  'layersBox': { scale: 1, tx: 0, ty: 0, minScale: 0.25, maxScale: 8 },
+  'plan-markers': { scale: 1, tx: 0, ty: 0, minScale: 0.25, maxScale: 8 }
 };
 
+function getViewportId(containerId) {
+  return containerId === 'layersBox' ? 'layers-viewport' : 'markers-viewport';
+}
+
 function zoomIn(containerId) {
-  const state = zoomStates[containerId];
-  state.scale = Math.min(state.scale * 1.25, state.maxScale);
-  applyTransform(containerId);
-  showZoomInfo(containerId);
+  const container = document.getElementById(containerId);
+  const rect = container.getBoundingClientRect();
+  // Zoom toward center of visible area
+  zoomAtPoint(containerId, rect.width / 2, rect.height / 2, 1.3);
 }
 
 function zoomOut(containerId) {
-  const state = zoomStates[containerId];
-  state.scale = Math.max(state.scale / 1.25, state.minScale);
-  applyTransform(containerId);
-  showZoomInfo(containerId);
+  const container = document.getElementById(containerId);
+  const rect = container.getBoundingClientRect();
+  zoomAtPoint(containerId, rect.width / 2, rect.height / 2, 1 / 1.3);
 }
 
 function zoomReset(containerId) {
   const state = zoomStates[containerId];
   state.scale = 1;
-  state.x = 0;
-  state.y = 0;
-  applyTransform(containerId);
+  state.tx = 0;
+  state.ty = 0;
+  applyTransform(containerId, true);
   showZoomInfo(containerId);
 }
 
-function applyTransform(containerId) {
+// Zoom by factor, keeping the point (cx, cy) in container-local coords fixed
+function zoomAtPoint(containerId, cx, cy, factor) {
   const state = zoomStates[containerId];
-  const viewport = document.getElementById(containerId === 'layersBox' ? 'layers-viewport' : 'markers-viewport');
-  viewport.style.transform = `scale(${state.scale}) translate(${state.x}px, ${state.y}px)`;
+  const oldScale = state.scale;
+  const newScale = Math.max(state.minScale, Math.min(oldScale * factor, state.maxScale));
+  if (newScale === oldScale) return;
+  
+  // Point in world coords: wx = (cx - tx) / oldScale
+  // After zoom: cx = wx * newScale + newTx → newTx = cx - wx * newScale
+  const wx = (cx - state.tx) / oldScale;
+  const wy = (cy - state.ty) / oldScale;
+  
+  state.scale = newScale;
+  state.tx = cx - wx * newScale;
+  state.ty = cy - wy * newScale;
+  
+  applyTransform(containerId, false);
+  showZoomInfo(containerId);
+}
+
+function applyTransform(containerId, animate) {
+  const state = zoomStates[containerId];
+  const viewport = document.getElementById(getViewportId(containerId));
+  if (animate) {
+    viewport.style.transition = 'transform 0.25s ease';
+    setTimeout(() => viewport.style.transition = 'none', 260);
+  }
+  viewport.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
 }
 
 function showZoomInfo(containerId) {
@@ -916,7 +968,8 @@ function showZoomInfo(containerId) {
   const info = document.getElementById(containerId === 'layersBox' ? 'zoom-info-layers' : 'zoom-info-markers');
   info.textContent = `${Math.round(state.scale * 100)}%`;
   info.style.display = 'block';
-  setTimeout(() => info.style.display = 'none', 1500);
+  clearTimeout(info._hideTimer);
+  info._hideTimer = setTimeout(() => info.style.display = 'none', 1500);
 }
 
 function setupZoomPan(containerId) {
@@ -925,37 +978,23 @@ function setupZoomPan(containerId) {
   let isDragging = false;
   let lastX, lastY;
 
-  // Wheel zoom
+  // Disable CSS transitions for interactive use
+  const viewport = document.getElementById(getViewportId(containerId));
+  viewport.style.transition = 'none';
+
+  // Wheel zoom — zoom toward cursor
   container.addEventListener('wheel', function(e) {
     e.preventDefault();
-    
     const rect = container.getBoundingClientRect();
-    const centerX = (e.clientX - rect.left) / rect.width;
-    const centerY = (e.clientY - rect.top) / rect.height;
-    
-    const oldScale = state.scale;
-    
-    if (e.deltaY < 0) {
-      state.scale = Math.min(state.scale * 1.1, state.maxScale);
-    } else {
-      state.scale = Math.max(state.scale / 1.1, state.minScale);
-    }
-    
-    // Zoom towards cursor position
-    if (state.scale !== oldScale) {
-      const scaleDiff = state.scale - oldScale;
-      state.x -= (centerX * rect.width * scaleDiff) / state.scale;
-      state.y -= (centerY * rect.height * scaleDiff) / state.scale;
-    }
-    
-    applyTransform(containerId);
-    showZoomInfo(containerId);
-  });
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    zoomAtPoint(containerId, cx, cy, factor);
+  }, { passive: false });
 
-  // Drag pan
+  // Drag pan — translate in screen space (1:1 with mouse movement)
   container.addEventListener('mousedown', function(e) {
     if (e.target.classList.contains('marker') || e.target.closest('.zoom-controls') || e.target.closest('.popup')) return;
-    
     isDragging = true;
     lastX = e.clientX;
     lastY = e.clientY;
@@ -965,84 +1004,95 @@ function setupZoomPan(containerId) {
 
   document.addEventListener('mousemove', function(e) {
     if (!isDragging) return;
-    
-    const deltaX = e.clientX - lastX;
-    const deltaY = e.clientY - lastY;
-    
-    state.x += deltaX / state.scale;
-    state.y += deltaY / state.scale;
-    
+    state.tx += e.clientX - lastX;
+    state.ty += e.clientY - lastY;
     lastX = e.clientX;
     lastY = e.clientY;
-    
-    applyTransform(containerId);
+    applyTransform(containerId, false);
   });
 
   document.addEventListener('mouseup', function() {
+    if (!isDragging) return;
     isDragging = false;
     container.classList.remove('dragging');
   });
 
-  // Double-click zoom
+  // Double-click: toggle between 1x and 2.5x at click point
   container.addEventListener('dblclick', function(e) {
     if (e.target.classList.contains('marker') || e.target.closest('.zoom-controls')) return;
-    
     const rect = container.getBoundingClientRect();
-    const centerX = (e.clientX - rect.left) / rect.width;
-    const centerY = (e.clientY - rect.top) / rect.height;
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
     
-    const oldScale = state.scale;
-    state.scale = state.scale < 2 ? 2 : 1;
-    
-    // Zoom towards click position
-    if (state.scale !== oldScale) {
-      const scaleDiff = state.scale - oldScale;
-      state.x -= (centerX * rect.width * scaleDiff) / state.scale;
-      state.y -= (centerY * rect.height * scaleDiff) / state.scale;
+    if (state.scale > 1.5) {
+      // Reset
+      state.scale = 1; state.tx = 0; state.ty = 0;
+      applyTransform(containerId, true);
+      showZoomInfo(containerId);
+    } else {
+      // Zoom to 2.5x at click point
+      const targetScale = 2.5;
+      const factor = targetScale / state.scale;
+      viewport.style.transition = 'transform 0.25s ease';
+      setTimeout(() => viewport.style.transition = 'none', 260);
+      zoomAtPoint(containerId, cx, cy, factor);
     }
-    
-    applyTransform(containerId);
-    showZoomInfo(containerId);
   });
 
-  // Touch support for mobile
-  let initialDistance = 0;
-  
+  // Touch: pinch zoom + single-finger pan
+  let touches = {};
+  let pinchStartDist = 0;
+  let pinchStartScale = 1;
+  let pinchCenterX = 0, pinchCenterY = 0;
+
   container.addEventListener('touchstart', function(e) {
-    if (e.touches.length === 2) {
-      const touch1 = e.touches[0];
-      const touch2 = e.touches[1];
-      initialDistance = Math.sqrt(
-        Math.pow(touch2.clientX - touch1.clientX, 2) + 
-        Math.pow(touch2.clientY - touch1.clientY, 2)
-      );
+    if (e.touches.length === 1 && !e.target.classList.contains('marker')) {
+      isDragging = true;
+      lastX = e.touches[0].clientX;
+      lastY = e.touches[0].clientY;
+      container.classList.add('dragging');
     }
-  });
+    if (e.touches.length === 2) {
+      isDragging = false;
+      const t1 = e.touches[0], t2 = e.touches[1];
+      pinchStartDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      pinchStartScale = state.scale;
+      const rect = container.getBoundingClientRect();
+      pinchCenterX = (t1.clientX + t2.clientX) / 2 - rect.left;
+      pinchCenterY = (t1.clientY + t2.clientY) / 2 - rect.top;
+    }
+  }, { passive: true });
 
   container.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 1 && isDragging) {
+      e.preventDefault();
+      state.tx += e.touches[0].clientX - lastX;
+      state.ty += e.touches[0].clientY - lastY;
+      lastX = e.touches[0].clientX;
+      lastY = e.touches[0].clientY;
+      applyTransform(containerId, false);
+    }
     if (e.touches.length === 2) {
       e.preventDefault();
+      const t1 = e.touches[0], t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const newScale = Math.max(state.minScale, Math.min(pinchStartScale * (dist / pinchStartDist), state.maxScale));
       
-      const touch1 = e.touches[0];
-      const touch2 = e.touches[1];
-      const currentDistance = Math.sqrt(
-        Math.pow(touch2.clientX - touch1.clientX, 2) + 
-        Math.pow(touch2.clientY - touch1.clientY, 2)
-      );
+      // Zoom toward pinch center
+      const wx = (pinchCenterX - state.tx) / state.scale;
+      const wy = (pinchCenterY - state.ty) / state.scale;
+      state.scale = newScale;
+      state.tx = pinchCenterX - wx * newScale;
+      state.ty = pinchCenterY - wy * newScale;
       
-      if (initialDistance > 0) {
-        const scale = currentDistance / initialDistance;
-        const newScale = Math.max(state.minScale, Math.min(state.scale * scale, state.maxScale));
-        
-        if (newScale !== state.scale) {
-          state.scale = newScale;
-          applyTransform(containerId);
-          showZoomInfo(containerId);
-        }
-      }
-      
-      initialDistance = currentDistance;
+      applyTransform(containerId, false);
+      showZoomInfo(containerId);
     }
+  }, { passive: false });
+
+  container.addEventListener('touchend', function() {
+    isDragging = false;
+    container.classList.remove('dragging');
   });
 }
 
