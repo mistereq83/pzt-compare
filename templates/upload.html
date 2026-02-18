@@ -30,9 +30,21 @@
   }
   .upload-box:hover { border-color:var(--accent); }
   .upload-box.dragover { border-color:var(--green); background:rgba(52,211,153,.05); }
-  .upload-box input[type=file] { position:absolute; opacity:0; width:100%; height:100%; cursor:pointer; }
   .upload-icon { font-size:2rem; margin-bottom:.5rem; }
-  .upload-preview { max-width:100%; max-height:200px; border-radius:8px; margin-top:1rem; }
+  .upload-preview { max-width:100%; max-height:180px; border-radius:8px; }
+  .upload-box.has-file { border-color:var(--green); border-style:solid; background:rgba(52,211,153,.05); }
+  .upload-filled { display:flex; flex-direction:column; align-items:center; gap:.5rem; position:relative; width:100%; }
+  .file-icon { font-size:2.5rem; }
+  .file-info { text-align:center; }
+  .file-name { font-weight:600; font-size:.85rem; word-break:break-all; }
+  .file-size { font-size:.75rem; color:var(--muted); margin-top:.15rem; }
+  .file-remove {
+    position:absolute; top:-8px; right:-8px; width:28px; height:28px;
+    border-radius:50%; background:var(--red); color:#fff; border:2px solid var(--card);
+    font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:all .15s; z-index:5;
+  }
+  .file-remove:hover { background:#ef4444; transform:scale(1.15); }
 
   .form-row { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem; }
   .form-group { margin-bottom:1rem; }
@@ -95,20 +107,40 @@
   <h2>📤 Prześlij rysunki</h2>
   
   <div class="upload-grid">
-    <div class="upload-box" onclick="document.getElementById('file1').click()">
-      <div class="upload-icon">📋</div>
-      <div>Wersja 1 (starszy rysunek)</div>
-      <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">PDF, PNG, JPG</div>
-      <input type="file" id="file1" accept=".pdf,.png,.jpg,.jpeg">
-      <img id="preview1" class="upload-preview" style="display:none">
+    <div class="upload-box" id="box1" onclick="document.getElementById('file1').click()">
+      <div class="upload-empty" id="empty1">
+        <div class="upload-icon">📋</div>
+        <div>Wersja 1 (starszy rysunek)</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">PDF, PNG, JPG</div>
+      </div>
+      <div class="upload-filled" id="filled1" style="display:none;">
+        <img id="preview1" class="upload-preview" style="display:none">
+        <div class="file-icon" id="fileicon1" style="display:none;">📄</div>
+        <div class="file-info">
+          <div class="file-name" id="fname1"></div>
+          <div class="file-size" id="fsize1"></div>
+        </div>
+        <button class="file-remove" onclick="event.stopPropagation();removeFile(1);" title="Usuń plik">✕</button>
+      </div>
+      <input type="file" id="file1" accept=".pdf,.png,.jpg,.jpeg" style="display:none;">
     </div>
     
-    <div class="upload-box" onclick="document.getElementById('file2').click()">
-      <div class="upload-icon">📋</div>
-      <div>Wersja 2 (nowszy rysunek)</div>
-      <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">PDF, PNG, JPG</div>
-      <input type="file" id="file2" accept=".pdf,.png,.jpg,.jpeg">
-      <img id="preview2" class="upload-preview" style="display:none">
+    <div class="upload-box" id="box2" onclick="document.getElementById('file2').click()">
+      <div class="upload-empty" id="empty2">
+        <div class="upload-icon">📋</div>
+        <div>Wersja 2 (nowszy rysunek)</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">PDF, PNG, JPG</div>
+      </div>
+      <div class="upload-filled" id="filled2" style="display:none;">
+        <img id="preview2" class="upload-preview" style="display:none">
+        <div class="file-icon" id="fileicon2" style="display:none;">📄</div>
+        <div class="file-info">
+          <div class="file-name" id="fname2"></div>
+          <div class="file-size" id="fsize2"></div>
+        </div>
+        <button class="file-remove" onclick="event.stopPropagation();removeFile(2);" title="Usuń plik">✕</button>
+      </div>
+      <input type="file" id="file2" accept=".pdf,.png,.jpg,.jpeg" style="display:none;">
     </div>
   </div>
   
@@ -194,35 +226,67 @@ let currentPointId = 0;
 
 // File upload handling
 document.getElementById('file1').addEventListener('change', function(e) {
-  handleFileSelect(e.target.files[0], 'preview1');
+  showFileState(1, e.target.files[0]);
   checkUploadReady();
 });
 
 document.getElementById('file2').addEventListener('change', function(e) {
-  handleFileSelect(e.target.files[0], 'preview2');
+  showFileState(2, e.target.files[0]);
   checkUploadReady();
 });
 
-function handleFileSelect(file, previewId) {
-  if (!file) return;
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+function showFileState(n, file) {
+  var empty = document.getElementById('empty'+n);
+  var filled = document.getElementById('filled'+n);
+  var box = document.getElementById('box'+n);
+  var preview = document.getElementById('preview'+n);
+  var fileicon = document.getElementById('fileicon'+n);
+  var fname = document.getElementById('fname'+n);
+  var fsize = document.getElementById('fsize'+n);
   
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const preview = document.getElementById(previewId);
-    if (file.type.includes('pdf')) {
-      preview.style.display = 'none';
-    } else {
-      preview.src = e.target.result;
-      preview.style.display = 'block';
-    }
-  };
-  reader.readAsDataURL(file);
+  if (!file) {
+    empty.style.display = '';
+    filled.style.display = 'none';
+    box.classList.remove('has-file');
+    return;
+  }
+  
+  empty.style.display = 'none';
+  filled.style.display = 'flex';
+  box.classList.add('has-file');
+  fname.textContent = file.name;
+  fsize.textContent = formatSize(file.size);
+  
+  if (file.type.includes('pdf')) {
+    preview.style.display = 'none';
+    fileicon.style.display = 'block';
+    fileicon.textContent = '📄 PDF';
+  } else {
+    fileicon.style.display = 'none';
+    preview.style.display = 'block';
+    var reader = new FileReader();
+    reader.onload = function(e) { preview.src = e.target.result; };
+    reader.readAsDataURL(file);
+  }
+}
+
+function removeFile(n) {
+  var input = document.getElementById('file'+n);
+  input.value = '';
+  showFileState(n, null);
+  checkUploadReady();
 }
 
 function checkUploadReady() {
-  const file1 = document.getElementById('file1').files[0];
-  const file2 = document.getElementById('file2').files[0];
-  const name = document.getElementById('comp-name').value.trim();
+  var file1 = document.getElementById('file1').files[0];
+  var file2 = document.getElementById('file2').files[0];
+  var name = document.getElementById('comp-name').value.trim();
   
   document.getElementById('upload-btn').disabled = !(file1 && file2 && name);
 }
