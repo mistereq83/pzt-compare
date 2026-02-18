@@ -391,15 +391,37 @@ function setupCalibration() {
   const img1 = document.getElementById('cal-img1');
   const img2 = document.getElementById('cal-img2');
   
-  img1.onload = () => setupImageCalibration(img1, 1);
-  img2.onload = () => setupImageCalibration(img2, 2);
+  // Remove any old listeners by cloning
+  const newImg1 = img1.cloneNode(true);
+  const newImg2 = img2.cloneNode(true);
+  img1.parentNode.replaceChild(newImg1, img1);
+  img2.parentNode.replaceChild(newImg2, img2);
   
-  if (img1.complete) setupImageCalibration(img1, 1);
-  if (img2.complete) setupImageCalibration(img2, 2);
+  function initImg(img, version) {
+    if (img._calibrationSetup) return; // prevent double-setup
+    img._calibrationSetup = true;
+    console.log('setupImageCalibration for version', version, 'src:', img.src.substring(0,60));
+    setupImageCalibration(img, version);
+  }
+  
+  // If already loaded (from cache), init immediately; otherwise wait for onload
+  if (newImg1.complete && newImg1.naturalWidth > 0) {
+    initImg(newImg1, 1);
+  } else {
+    newImg1.onload = () => initImg(newImg1, 1);
+  }
+  
+  if (newImg2.complete && newImg2.naturalWidth > 0) {
+    initImg(newImg2, 2);
+  } else {
+    newImg2.onload = () => initImg(newImg2, 2);
+  }
 }
 
 function setupImageCalibration(img, version) {
+  console.log('Attaching click handler to calibration image', version, 'element:', img.id || img.className);
   img.addEventListener('click', async function(e) {
+    console.log('Click on calibration image', version, 'at', e.clientX, e.clientY);
     const rect = img.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width * 100;
     const y = (e.clientY - rect.top) / rect.height * 100;
