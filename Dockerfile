@@ -7,15 +7,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Install Python deps (bust cache: v3-openai)
 COPY requirements.txt .
-# v2: added openai
 RUN pip install --no-cache-dir -r requirements.txt gunicorn
 
 COPY . .
 
-# Ensure dirs exist
 RUN mkdir -p uploads comparisons
 
 EXPOSE 8899
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8899", "--workers", "2", "--timeout", "120", "app:app"]
+# Use longer timeout for AI analysis calls
+CMD ["gunicorn", "--bind", "0.0.0.0:8899", "--workers", "2", "--timeout", "300", "app:app"]
