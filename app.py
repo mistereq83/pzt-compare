@@ -974,6 +974,20 @@ def serve_uploads(filename):
 def serve_comparisons(filename):
     return send_from_directory(app.config['COMPARISONS_FOLDER'], filename)
 
+@app.route('/admin/purge-all', methods=['POST'])
+@requires_auth
+def purge_all_comparisons():
+    """Delete ALL comparisons from the volume"""
+    import shutil
+    comp_dir = Path(app.config['COMPARISONS_FOLDER'])
+    deleted = []
+    if comp_dir.exists():
+        for item in comp_dir.iterdir():
+            if item.is_dir():
+                shutil.rmtree(item)
+                deleted.append(item.name)
+    return jsonify({'deleted': deleted, 'count': len(deleted)})
+
 @app.route('/health')
 def health():
     return 'ok'
