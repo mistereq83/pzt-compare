@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PZT Compare — Ekolan</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📐</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -63,10 +64,31 @@
   .btn-sm { padding:.5rem .9rem; font-size:.8rem; }
 
   .empty-state { 
-    text-align:center; padding:4rem 1.5rem; color:var(--muted); background:var(--card);
-    margin:1.5rem; border-radius:12px; border:1px solid var(--border);
+    text-align:center; padding:4rem 2rem; background:var(--card);
+    margin:1.5rem; border-radius:16px; border:1px solid var(--border);
+    box-shadow: 0 4px 12px rgba(0,61,108,0.08);
   }
-  .empty-state h2 { font-size:1.3rem; margin-bottom:.8rem; color:var(--navy); font-weight:600; }
+  .empty-icon { 
+    font-size:5rem; margin-bottom:1.5rem; line-height:1;
+    background: linear-gradient(135deg, var(--navy) 0%, var(--orange) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; filter: drop-shadow(0 2px 4px rgba(0,61,108,0.1));
+  }
+  .empty-state h2 { 
+    font-size:1.5rem; margin-bottom:1.5rem; color:var(--navy); font-weight:600; 
+    line-height:1.3; max-width:500px; margin-left:auto; margin-right:auto;
+  }
+  .empty-features {
+    margin-bottom:2rem; display:inline-block; text-align:left;
+  }
+  .feature-item {
+    color:var(--text); font-size:.95rem; margin-bottom:.5rem; padding:.2rem 0;
+    font-weight:500;
+  }
+  .btn-big {
+    padding:1rem 2rem; font-size:1rem; font-weight:700; 
+    border-radius:12px; box-shadow: 0 4px 12px rgba(245,130,32,0.3);
+  }
 
   @media(max-width:768px) {
     .comparisons-grid { grid-template-columns:1fr; }
@@ -114,10 +136,14 @@
 </div>
 {% else %}
 <div class="empty-state">
-  <h2>Brak porównań</h2>
-  <p>Rozpocznij od przesłania dwóch rysunków do porównania.</p>
-  <br>
-  <a href="/new" class="btn btn-primary">Rozpocznij</a>
+  <div class="empty-icon">📐</div>
+  <h2>Porównaj dwie wersje projektu zagospodarowania terenu</h2>
+  <div class="empty-features">
+    <div class="feature-item">• Automatyczne wykrywanie zmian</div>
+    <div class="feature-item">• Kategorie priorytetów</div>
+    <div class="feature-item">• Analiza AI</div>
+  </div>
+  <a href="/new" class="btn btn-orange btn-big">Rozpocznij porównanie</a>
 </div>
 {% endif %}
 

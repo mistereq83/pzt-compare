@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Nowe porównanie — PZT Compare</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📐</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -21,6 +22,44 @@
   .back-btn { color:rgba(255,255,255,0.8); text-decoration:none; font-size:.9rem; transition:color 0.2s; }
   .back-btn:hover { color:#fff; }
 
+  /* Stepper */
+  .stepper-container { 
+    background:var(--card); border-bottom:1px solid var(--border); padding:1.5rem; 
+  }
+  .stepper { 
+    display:flex; align-items:center; justify-content:center; max-width:600px; margin:0 auto; 
+  }
+  .step-item { 
+    display:flex; flex-direction:column; align-items:center; text-align:center; min-width:80px; 
+  }
+  .step-circle { 
+    width:36px; height:36px; border-radius:50%; background:var(--border); color:var(--muted); 
+    display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.9rem;
+    border:2px solid var(--border); transition:all 0.3s; margin-bottom:.5rem;
+  }
+  .step-label { 
+    font-size:.8rem; color:var(--muted); font-weight:600; transition:color 0.3s; 
+  }
+  .step-connector { 
+    flex:1; height:2px; background:var(--border); margin:0 .5rem; max-width:80px; 
+    transition:background 0.3s; margin-bottom:1.5rem;
+  }
+  
+  /* Stepper States */
+  .step-item.active .step-circle { 
+    background:var(--navy); color:#fff; border-color:var(--navy); 
+    transform:scale(1.1); box-shadow: 0 0 0 3px rgba(0,61,108,0.2);
+  }
+  .step-item.active .step-label { color:var(--navy); }
+  
+  .step-item.done .step-circle { 
+    background:var(--green); color:#fff; border-color:var(--green); 
+  }
+  .step-item.done .step-circle::before { content:'✓'; }
+  .step-item.done .step-label { color:var(--green); }
+  
+  .step-connector.done { background:var(--green); }
+
   .step { padding:1.5rem; display:none; }
   .step.active { display:block; }
   .step h2 { font-size:1.1rem; font-weight:700; margin-bottom:1rem; }
@@ -33,7 +72,15 @@
     box-shadow: 0 2px 8px rgba(0,61,108,0.05);
   }
   .upload-box:hover { border-color:var(--navy); }
-  .upload-box.dragover { border-color:var(--green); background:rgba(107,185,143,.05); }
+  .upload-box.dragover { 
+    border-color:var(--green); background:rgba(107,185,143,.05); 
+    animation: pulse-border 0.6s ease-in-out infinite alternate;
+  }
+  
+  @keyframes pulse-border {
+    from { border-color:var(--green); box-shadow: 0 0 0 0 rgba(107,185,143,0.3); }
+    to { border-color:var(--green); box-shadow: 0 0 0 4px rgba(107,185,143,0.1); }
+  }
   .upload-icon { font-size:2rem; margin-bottom:.5rem; color:var(--muted); }
   .upload-preview { max-width:100%; max-height:180px; border-radius:8px; }
   .upload-box.has-file { border-color:var(--green); border-style:solid; background:rgba(107,185,143,.05); }
@@ -116,6 +163,15 @@
     padding:1rem; background:rgba(0,61,108,.05); border:1px solid rgba(0,61,108,.1); 
     margin-bottom:1rem; border-radius:8px; font-size:.85rem; color:var(--navy);
   }
+  .calibration-steps { 
+    margin:.5rem 0; padding-left:1.2rem; 
+  }
+  .calibration-steps li { 
+    margin-bottom:.4rem; line-height:1.4; 
+  }
+  .calibration-steps strong { 
+    color:var(--navy); 
+  }
 
   .progress-bar { 
     width:100%; height:6px; background:var(--border); border-radius:3px; overflow:hidden; margin-bottom:1rem;
@@ -139,6 +195,10 @@
   @media(max-width:768px) {
     .upload-grid, .calibration-container, .form-row { grid-template-columns:1fr; }
     .btn-group { flex-direction:column; }
+    .stepper { padding:0 1rem; }
+    .step-label { font-size:.7rem; }
+    .step-circle { width:30px; height:30px; font-size:.8rem; }
+    .step-connector { max-width:40px; margin:0 .2rem; margin-bottom:1.2rem; }
   }
 </style>
 </head>
@@ -150,6 +210,31 @@
   <h1>Nowe porównanie</h1>
 </header>
 
+<!-- Progress Stepper -->
+<div class="stepper-container">
+  <div class="stepper">
+    <div class="step-item active" data-step="1">
+      <div class="step-circle">1</div>
+      <div class="step-label">Upload</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step-item" data-step="2">
+      <div class="step-circle">2</div>
+      <div class="step-label">Obszar</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step-item" data-step="3">
+      <div class="step-circle">3</div>
+      <div class="step-label">Kalibracja</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step-item" data-step="4">
+      <div class="step-circle">4</div>
+      <div class="step-label">Generowanie</div>
+    </div>
+  </div>
+</div>
+
 <!-- Step 1: Upload -->
 <div class="step active" id="step-upload">
   <h2>📤 Prześlij rysunki</h2>
@@ -157,9 +242,16 @@
   <div class="upload-grid">
     <div class="upload-box" id="box1" onclick="document.getElementById('file1').click()">
       <div class="upload-empty" id="empty1">
-        <div class="upload-icon">📋</div>
+        <div class="upload-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17,8 12,3 7,8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+        </div>
         <div>Wersja 1 (starszy rysunek)</div>
-        <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">PDF, PNG, JPG</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">przeciągnij plik lub kliknij</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:.2rem">PDF, PNG, JPG</div>
       </div>
       <div class="upload-filled" id="filled1" style="display:none;">
         <img id="preview1" class="upload-preview" style="display:none">
@@ -175,9 +267,16 @@
     
     <div class="upload-box" id="box2" onclick="document.getElementById('file2').click()">
       <div class="upload-empty" id="empty2">
-        <div class="upload-icon">📋</div>
+        <div class="upload-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17,8 12,3 7,8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+        </div>
         <div>Wersja 2 (nowszy rysunek)</div>
-        <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">PDF, PNG, JPG</div>
+        <div style="font-size:.8rem;color:var(--muted);margin-top:.3rem">przeciągnij plik lub kliknij</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:.2rem">PDF, PNG, JPG</div>
       </div>
       <div class="upload-filled" id="filled2" style="display:none;">
         <img id="preview2" class="upload-preview" style="display:none">
@@ -254,7 +353,15 @@
   </div>
   
   <div class="calibration-info">
-    <strong>Instrukcja:</strong> Kliknij minimum 3 te same punkty na obu rysunkach (narożniki, przecięcia linii). System automatycznie przyciąga punkty do najbliższych krawędzi i narożników 🎯. Im więcej punktów, tym lepsze dopasowanie. Kliknij ponownie na punkt, aby go usunąć.
+    <strong>Instrukcja kalibracji:</strong>
+    <ol class="calibration-steps">
+      <li><strong>Znajdź te same punkty</strong> na obu rysunkach (narożniki budynków, przecięcia linii)</li>
+      <li><strong>Kliknij minimum 3 punkty</strong> - system automatycznie przyciąga do krawędzi 🎯</li>
+      <li><strong>Dodaj więcej punktów</strong> dla lepszego dopasowania (zalecane: 4-6 punktów)</li>
+    </ol>
+    <div style="font-size:.8rem;color:var(--muted);margin-top:.5rem;">
+      💡 Wskazówka: Kliknij ponownie na punkt, aby go usunąć
+    </div>
   </div>
   
   <div class="calibration-container">
@@ -640,6 +747,42 @@ async function processCalibration() {
 function showStep(stepId) {
   document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
   document.getElementById(stepId).classList.add('active');
+  updateStepper(stepId);
+}
+
+function updateStepper(stepId) {
+  const stepMapping = {
+    'step-upload': 1,
+    'step-calibration': 2,
+    'step-roi': 3,
+    'step-processing': 4
+  };
+  
+  const currentStep = stepMapping[stepId];
+  if (!currentStep) return;
+  
+  const stepItems = document.querySelectorAll('.step-item');
+  const stepConnectors = document.querySelectorAll('.step-connector');
+  
+  stepItems.forEach((item, index) => {
+    const stepNum = index + 1;
+    item.classList.remove('active', 'done');
+    
+    if (stepNum === currentStep) {
+      item.classList.add('active');
+    } else if (stepNum < currentStep) {
+      item.classList.add('done');
+    }
+  });
+  
+  stepConnectors.forEach((connector, index) => {
+    const stepNum = index + 1;
+    connector.classList.remove('done');
+    
+    if (stepNum < currentStep) {
+      connector.classList.add('done');
+    }
+  });
 }
 
 // === ROI SELECTION ===

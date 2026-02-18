@@ -64,6 +64,7 @@ def login_page():
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PZT Compare — Logowanie</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📐</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {{ 
@@ -71,11 +72,12 @@ def login_page():
     --bg: #f5f5f5; --card: #ffffff; --border: #e0e0e0; --text: #262626; --muted: #636363;
   }}
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ font-family:'Poppins',-apple-system,sans-serif; background:var(--bg); color:var(--text);
+  body {{ font-family:'Poppins',-apple-system,sans-serif; 
+         background: linear-gradient(135deg, #003d6c 0%, #28486e 100%); color:var(--text);
          display:flex; align-items:center; justify-content:center; min-height:100vh; }}
-  .login-box {{ background:var(--card); border:1px solid var(--border); border-radius:16px;
+  .login-box {{ background:var(--card); border:1px solid rgba(255,255,255,0.1); border-radius:16px;
                padding:2.5rem; width:100%; max-width:380px; text-align:center; 
-               box-shadow: 0 4px 20px rgba(0,61,108,0.1); }}
+               box-shadow: 0 8px 32px rgba(0,0,0,0.3); }}
   .logo {{ margin-bottom: 1.5rem; }}
   .logo img {{ height: 60px; object-fit: contain; }}
   .login-box h1 {{ font-size:1.8rem; margin-bottom:.5rem; color:var(--navy); font-weight:600; }}
